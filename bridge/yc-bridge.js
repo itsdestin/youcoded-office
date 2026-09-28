@@ -14,6 +14,43 @@
  */
 (function () {
   var STYLE_ID = 'yc-office-theme';
+
+  // ── No unload veto from the editor ──
+  // WHY: the host (YouCoded) saves every open document before its window closes and asks the
+  // person itself when a save failed (Review / Close anyway). The editor's own "leave page?"
+  // veto (a beforeunload handler that fires while the document is modified) cannot be answered
+  // inside YouCoded — it silently cancelled the window close, or forced the host to override
+  // every veto, which also dropped the host's own guard for unsaved text-file edits. So in every
+  // same-origin editor frame: an onbeforeunload handler is ignored, beforeunload listeners are
+  // not registered, and any that got in before this guard cannot veto (preventDefault and
+  // returnValue do nothing on a BeforeUnloadEvent here).
+  function guardUnload(win) {
+    try {
+      if (!win || win.__ycUnloadGuard) return;
+      win.__ycUnloadGuard = true;
+      try { win.onbeforeunload = null; } catch (e) { /* read-only: the definition below wins */ }
+      Object.defineProperty(win, 'onbeforeunload', { configurable: true, get: function () { return null; }, set: function () {} });
+      var add = win.addEventListener;
+      win.addEventListener = function (type, listener, options) {
+        if (String(type).toLowerCase() === 'beforeunload') return;
+        return add.call(this, type, listener, options);
+      };
+      var P = win.BeforeUnloadEvent && win.BeforeUnloadEvent.prototype;
+      if (P) {
+        Object.defineProperty(P, 'returnValue', { configurable: true, get: function () { return ''; }, set: function () {} });
+        P.preventDefault = function () {};
+      }
+    } catch (e) { /* not same-origin, or already sealed: nothing to guard here */ }
+  }
+  function guardAll(win) {
+    guardUnload(win);
+    var frames;
+    try { frames = win.document.querySelectorAll('iframe'); } catch (e) { return; }
+    for (var i = 0; i < frames.length; i++) {
+      try { if (frames[i].contentWindow) guardAll(frames[i].contentWindow); } catch (e) { /* cross-origin */ }
+    }
+  }
+  guardUnload(window);
   var latest = null;   // last theme posted by the host
   var slim = false;
   var seen = new WeakSet();
@@ -124,6 +161,7 @@
   }
 
   function walk(win) {
+    guardUnload(win);
     if (latest) applyTo(win);
     var frames;
     try { frames = win.document.querySelectorAll('iframe'); } catch (e) { return; }
@@ -257,6 +295,7 @@
     fitTimer = setTimeout(fitWidth, 200);
   });
   setInterval(function () {
+    guardAll(window); // editor frames appear late; guard each as soon as it exists
     if (latest) walk(window); // cheap when nothing changed; catches late theme registration
     var now = drawn(window);
     if (now && !announced) {
