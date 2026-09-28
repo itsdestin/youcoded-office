@@ -12,9 +12,13 @@ WORK="$ROOT/work"; OUT="$WORK/bundle"; mkdir -p "$WORK" "$ROOT/dist"; rm -rf "$O
 [ -d "$WORK/eol" ] || git clone --depth 1 --branch "$TAG" --recurse-submodules --shallow-submodules "https://github.com/$REPO.git" "$WORK/eol"
 cd "$WORK/eol"
 # WHY --ignore-scripts then rebuild: npm 11+ blocks install scripts by default, and imagemin's
-# binaries only arrive through them.
+# binaries only arrive through them. Only gifsicle and optipng-bin are actually pulled in by
+# this tag's grunt-contrib-imagemin (via imagemin-gifsicle/imagemin-optipng in
+# work/eol/package-lock.json); mozjpeg and pngquant-bin aren't in the tree, so rebuilding them
+# would silently no-op. No `|| true`: a real rebuild failure here should stop the build, not
+# produce a bundle with a broken imagemin binary.
 npm ci --ignore-scripts
-npm rebuild gifsicle mozjpeg optipng-bin pngquant-bin || true
+npm rebuild gifsicle optipng-bin
 # WHY: the sdkjs submodule's grunt build (compile-word/cell/slide via Closure) is its own
 # npm package with its own node_modules, not hoisted by the root install; the build script
 # fails loudly ("grunt is missing") without this.

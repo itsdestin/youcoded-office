@@ -9,11 +9,18 @@ import path from 'node:path';
 const B = path.resolve(import.meta.dirname, '..', 'work', 'bundle');
 const run = promisify(execFile);
 
-test('index.html loads the relay before bridge.js and the theme bridge', async () => {
+test('index.html loads the relay, then the theme bridge, then bridge.js', async () => {
   const html = await readFile(path.join(B, 'editors', 'index.html'), 'utf8');
-  const relay = html.indexOf('tauri-relay.js'), yc = html.indexOf('yc-bridge.js'), bridge = html.indexOf('bridge.js"');
+  const relay = html.indexOf('tauri-relay.js');
+  const yc = html.indexOf('yc-bridge.js');
+  // WHY a regex, not indexOf('bridge.js"'): 'yc-bridge.js"' contains the literal substring
+  // 'bridge.js"', so a plain indexOf falsely matches inside the yc-bridge tag and never checks
+  // the real <script src="bridge.js"> tag at all. Require the character before "bridge" to not
+  // be a word char, quote or hyphen, so the "yc-" prefix can't satisfy the match.
+  const bridgeMatch = /(?<![\w'"-])src="bridge\.js"/.exec(html);
   assert.ok(relay > 0 && yc > relay, 'relay then yc-bridge');
-  assert.ok(bridge === -1 || bridge > relay, 'bridge.js after the relay');
+  assert.ok(bridgeMatch, 'bridge.js script tag present');
+  assert.ok(bridgeMatch.index > yc, 'bridge.js after yc-bridge');
 });
 
 test('bridge.js serves media from the document origin', async () => {
