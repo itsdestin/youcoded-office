@@ -164,6 +164,16 @@
     if (!el) return null;
     return el.tagName === 'BUTTON' ? el : el.querySelector('button') || el;
   }
+  function editorApi() {
+    var doc = editorDoc(window);
+    var w = doc && doc.defaultView;
+    try { return w && ((w.Asc && w.Asc.editor) || w.editor) || null; } catch (e) { return null; }
+  }
+  function save() {
+    var api = editorApi();
+    if (api && typeof api.asc_Save === 'function') { api.asc_Save(false); return; }
+    if (window.AscDesktopEditor) window.AscDesktopEditor.LocalFileSave('', '', null, 0, null);
+  }
   function run(cmd) {
     if (COMMANDS.indexOf(cmd) < 0) return;
     var b = button(editorDoc(window), cmd);
@@ -191,9 +201,15 @@
     if (d.type === 'yc:office-theme' && d.theme && d.theme.tokens) { latest = d.theme; schedule(); }
     if (d.type === 'yc:office-mode') { slim = !!d.slim; schedule(); }
     if (d.type === 'yc:office-cmd' && typeof d.cmd === 'string') { run(d.cmd); setTimeout(reportState, 50); }
-    // WHY: autosave is the host's decision (3 s after the last change); the editor's own save
-    // path (LocalFileSave, the spike's --save) sends the bytes and calls save_file itself.
-    if (d.type === 'yc:office-save' && window.AscDesktopEditor) window.AscDesktopEditor.LocalFileSave('', '', null, 0, null);
+    // WHY: autosave is the host's decision (3 s after the last change), but the save itself must
+    // be the EDITOR's own (asc_Save), the same call Ctrl+S makes. sdkjs records where a save it
+    // started ends (History.LastUserSavedIndex, set when DesktopOfflineAppDocumentEndSave answers
+    // it); calling LocalFileSave directly skips that bookkeeping, so after every save the editor
+    // still reported the document as modified and the host saved again every 3 s, forever
+    // (measured in the YouCoded dev window, 2026-09-28). asc_Save still ends in LocalFileSave,
+    // which sends the bytes and calls save_file. The direct call stays only as a fallback for a
+    // frame whose editor API is not reachable yet.
+    if (d.type === 'yc:office-save') save();
   });
   setInterval(function () { if (slim) reportState(); }, 250);
   // Editor frames appear late and are rebuilt on open; re-walk when the tree changes.
