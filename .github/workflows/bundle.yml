@@ -1,0 +1,22 @@
+name: bundle
+on:
+  push: { tags: ['v*'] }
+  workflow_dispatch:
+permissions: { contents: write }
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: bash build/build-linux.sh
+      # WHY the glob, not `test/`: this Node build's --test resolves a bare
+      # directory argument as a single CJS import target instead of recursing
+      # into it, which fails with MODULE_NOT_FOUND before any test runs
+      # (verified on both Node 22.23.3 and 26.4.0). The glob expands to the
+      # real file and runs the same suite.
+      - run: node --test test/*.test.mjs
+      - if: startsWith(github.ref, 'refs/tags/')
+        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/SHA256SUMS --title "$GITHUB_REF_NAME" --notes "Built from euro-office-lite $(node -p "require('./PIN.json').euroOfficeLite.tag")"
+        env: { GH_TOKEN: '${{ github.token }}' }

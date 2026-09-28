@@ -1,0 +1,46 @@
+youcoded-office — third-party notices
+======================================
+
+This bundle packages, unmodified in substance (see README.md for YouCoded's
+own small patches), the following upstream projects. Each remains under its
+own licence; this repo's own files are AGPL-3.0 (see LICENSE).
+
+Euro-Office
+-----------
+The editor UI (web-apps) and the document engine (sdkjs) that this bundle's
+`editors/` folder is built from.
+Licence: GNU Affero General Public License v3.0 (AGPL-3.0).
+Source: https://github.com/Euro-Office
+
+OnlyOffice
+----------
+Euro-Office is a fork of OnlyOffice (Ascensio System SIA); the editors and
+the `x2t` document converter in this bundle's `converter/` folder trace back
+to OnlyOffice's own code.
+Copyright: Ascensio System SIA.
+Licence: GNU Affero General Public License v3.0 (AGPL-3.0).
+
+euro-office-lite
+----------------
+The specific downstream project this bundle is built from: it packages
+Euro-Office's editor UI and OnlyOffice's `x2t` converter, templates and
+fonts into one release.
+Licence: GNU Affero General Public License v3.0 (AGPL-3.0).
+Source: https://github.com/delmarguillen/euro-office-lite
+Pinned release: v0.17.21-alpha (see PIN.json)
+
+Fonts (editors/fonts)
+----------------------
+- Carlito (Regular, Bold, Italic, Bold Italic)
+  Licence: SIL Open Font License, Version 1.1
+- Liberation Sans (Regular, Bold, Italic, Bold Italic)
+  Licence: SIL Open Font License, Version 1.1
+- Liberation Serif (Regular, Bold, Italic, Bold Italic)
+  Licence: SIL Open Font License, Version 1.1
+- Liberation Mono (Regular, Bold, Italic, Bold Italic)
+  Licence: SIL Open Font License, Version 1.1
+
+The SIL Open Font License permits bundling, using and redistributing these
+fonts, including embedded in a document, without royalty, provided the
+font files themselves are not sold on their own. Full licence text:
+https://scripts.sil.org/OFL
