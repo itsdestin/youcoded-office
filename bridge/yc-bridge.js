@@ -23,7 +23,10 @@
   // every veto, which also dropped the host's own guard for unsaved text-file edits. So in every
   // same-origin editor frame: an onbeforeunload handler is ignored, beforeunload listeners are
   // not registered, and any that got in before this guard cannot veto (preventDefault and
-  // returnValue do nothing on a BeforeUnloadEvent here).
+  // returnValue do nothing on a BeforeUnloadEvent here). v0.1.3 also closes the two side doors:
+  // body.onbeforeunload (it sets the window's handler natively, past the window property, and a
+  // handler's returned string vetoes without touching the event), and
+  // EventTarget.prototype.addEventListener.call(window, 'beforeunload', …).
   function guardUnload(win) {
     try {
       if (!win || win.__ycUnloadGuard) return;
@@ -35,6 +38,18 @@
         if (String(type).toLowerCase() === 'beforeunload') return;
         return add.call(this, type, listener, options);
       };
+      ['HTMLBodyElement', 'HTMLFrameSetElement'].forEach(function (name) {
+        var proto = win[name] && win[name].prototype;
+        if (proto) Object.defineProperty(proto, 'onbeforeunload', { configurable: true, get: function () { return null; }, set: function () {} });
+      });
+      var ET = win.EventTarget && win.EventTarget.prototype;
+      if (ET && ET.addEventListener) {
+        var etAdd = ET.addEventListener;
+        ET.addEventListener = function (type, listener, options) {
+          if (this === win && String(type).toLowerCase() === 'beforeunload') return;
+          return etAdd.call(this, type, listener, options);
+        };
+      }
       var P = win.BeforeUnloadEvent && win.BeforeUnloadEvent.prototype;
       if (P) {
         Object.defineProperty(P, 'returnValue', { configurable: true, get: function () { return ''; }, set: function () {} });

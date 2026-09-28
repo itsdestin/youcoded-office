@@ -45,8 +45,15 @@ test('a host save request before the editor API exists falls back to LocalFileSa
 function fakeEditorWindow() {
   class BeforeUnloadEvent { constructor() { this.defaultPrevented = false; this._rv = ''; } preventDefault() { this.defaultPrevented = true; } get returnValue() { return this._rv; } set returnValue(v) { this._rv = v; } }
   const listeners = {};
+  // The prototype path an editor script could call directly on the window (v0.1.3).
+  class EventTarget { addEventListener(type, cb) { (this.listeners[type] = this.listeners[type] || []).push(cb); } }
+  // body.onbeforeunload sets the window's handler natively; modelled as a plain field here.
+  class HTMLBodyElement {}
+  HTMLBodyElement.prototype.onbeforeunload = null;
   const w = {
     BeforeUnloadEvent,
+    EventTarget,
+    HTMLBodyElement,
     onbeforeunload: null,
     addEventListener(type, cb) { (listeners[type] = listeners[type] || []).push(cb); },
     listeners,
@@ -78,6 +85,11 @@ test('no editor frame can veto the window unload: the host saves and asks the pe
     const before = (w.listeners.beforeunload || []).length;
     w.addEventListener('beforeunload', () => {});
     assert.equal((w.listeners.beforeunload || []).length, before, 'no new beforeunload listener');
+    w.EventTarget.prototype.addEventListener.call(w, 'beforeunload', () => {});
+    assert.equal((w.listeners.beforeunload || []).length, before, 'nor through EventTarget.prototype');
+    const body = new w.HTMLBodyElement();
+    body.onbeforeunload = () => 'leave?';
+    assert.equal(body.onbeforeunload, null, 'body.onbeforeunload is ignored');
     const ev = new w.BeforeUnloadEvent();
     (w.listeners.beforeunload || []).forEach((cb) => cb(ev));
     assert.equal(ev.defaultPrevented, false, 'an earlier listener cannot veto');
@@ -86,4 +98,7 @@ test('no editor frame can veto the window unload: the host saves and asks the pe
   // Other events are untouched.
   editor.addEventListener('keydown', () => {});
   assert.equal(editor.listeners.keydown.length, 1);
+  const other = { listeners: {} };
+  editor.EventTarget.prototype.addEventListener.call(other, 'beforeunload', () => {});
+  assert.equal(other.listeners.beforeunload.length, 1, 'only the window itself is guarded');
 });
