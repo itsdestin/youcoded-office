@@ -8,6 +8,9 @@
  * tabs own the document name — and, in "slim" mode, all of the editor's chrome
  * so the host can draw its own one-row toolbar.
  *
+ * It also keeps the editor quiet and offline in ways its own settings can't: no "New feature"
+ * tips, and no "links to external sources" warning (see quietEditor below).
+ *
  * Prototype for the design stage (2026-09-28). Messages:
  *   {type:'yc:office-theme', theme:{tokens, dark, wallpaper, panelsOpacity, panelsBlur, fontLinks}}
  *   {type:'yc:office-mode', slim:boolean}
@@ -59,12 +62,87 @@
   }
   function guardAll(win) {
     guardUnload(win);
+    quietEditor(win);
     var frames;
     try { frames = win.document.querySelectorAll('iframe'); } catch (e) { return; }
     for (var i = 0; i < frames.length; i++) {
       try { if (frames[i].contentWindow) guardAll(frames[i].contentWindow); } catch (e) { /* cross-origin */ }
     }
   }
+  // ── No "New feature" tips ──
+  // WHY: Euro-Office pops "New" onboarding tips over the toolbar (TooltipManager, web-apps
+  // SynchronizeTip.js); YouCoded explains its own features, and in the slim editor the tips point
+  // at buttons that are hidden. A tip is skipped once its name is set in localStorage
+  // (TooltipManager._addTips / _getNeedShow read Common.localStorage.getItem(name), which is plain
+  // localStorage here). The editor's origin is per document and fresh, so this runs on every
+  // load, BEFORE the editor frame starts. Names: every tip `name` in the built web-apps app.js of
+  // euro-office-lite v0.17.21-alpha (plus the source tree's, for other builds of the same tag).
+  var SEEN_TIPS = [
+    'help-tip-comment-filter', 'help-tip-chart-elements', 'help-tip-redact-tab', 'help-tip-mark-for-redaction',
+    'help-tip-apply-redaction',
+    'de-help-tip-multipage-view-statusbar', 'de-help-tip-multipage-view-toolbar', 'de-help-tip-header-footer-tab',
+    'de-help-tip-signature', 'de-help-tip-fill-status',
+    'de-form-tip-create', 'de-form-tip-roles', 'de-form-tip-save', 'de-form-tip-settings',
+    'de-form-tip-settings-group', 'de-form-tip-settings-key', 'de-form-tip-submit',
+    'sse-help-tip-table-tab', 'sse-help-tip-solver', 'sse-help-tip-cellFormat', 'sse-help-tip-rtl-dir',
+    'pe-help-tip-master-tab', 'pe-help-tip-gif-payback',
+    'pdfe-help-tip-annot-rect', 'pdfe-help-tip-create-link', 'pdfe-help-tip-pdf-charts',
+  ];
+  function markTipsSeen(win) {
+    try {
+      var ls = win.localStorage;
+      SEEN_TIPS.forEach(function (n) { if (!ls.getItem(n)) ls.setItem(n, '1'); });
+    } catch (e) { /* no storage in this frame: the tips' own CSS hide below still applies */ }
+  }
+  markTipsSeen(window);
+
+  // ── Keep the editor quiet and offline, per frame, as soon as its code exists ──
+  function quietEditor(win) {
+    try {
+      // A tip added later than the seed above (a build with new tip names): a "New feature" tip
+      // is marked seen instead of queued.
+      var TM = win.Common && win.Common.UI && win.Common.UI.TooltipManager;
+      if (TM && TM.addTips && !TM.__ycQuiet) {
+        TM.__ycQuiet = true;
+        var addTips = TM.addTips;
+        TM.addTips = function (arr) {
+          var keep = {};
+          for (var k in arr) {
+            if (!Object.prototype.hasOwnProperty.call(arr, k)) continue;
+            var tip = arr[k];
+            if (tip && tip.isNewFeature) { try { tip.name && win.localStorage.setItem(tip.name, '1'); } catch (e) { /* no storage */ } continue; }
+            keep[k] = tip;
+          }
+          return addTips.call(this, keep);
+        };
+      }
+    } catch (e) { /* not same-origin or no tips here */ }
+    try {
+      // "This workbook contains links to one or more external sources that could be unsafe"
+      // (web-apps ExternalLinks.js onNeedUpdateExternalReferenceOnOpen). WHY neither of its
+      // buttons: "Update"/"Continue" fetches the linked workbooks (reaching outside the
+      // document), and "Turn off AutoUpdate"/"Don't update" with auto-update on calls
+      // asc_setUpdateLinks(false, true), which writes a history point, so the file CHANGES and
+      // autosave rewrites it. The third option touches neither: sdkjs asks for the dialog from
+      // baseEditorsApi.prototype.onNeedUpdateExternalReferenceOnOpen (sdkjs common/apiBase.js,
+      // called by the word, cell and slide APIs at open), so that call does nothing here, and
+      // WorkbookView.prototype.initExternalReferenceUpdateTimer (cell/view/WorkbookView.js,
+      // which re-fetches every link 30 s after open when the workbook's own setting says
+      // "always") does nothing either. The cached values stored in the file stay as they are;
+      // Data > External links still updates them when the person asks.
+      var base = win.AscCommon && win.AscCommon.baseEditorsApi;
+      if (base && base.prototype && !base.prototype.__ycQuiet) {
+        base.prototype.__ycQuiet = true;
+        base.prototype.onNeedUpdateExternalReferenceOnOpen = function () {};
+      }
+      var WV = win.AscCommonExcel && win.AscCommonExcel.WorkbookView;
+      if (WV && WV.prototype && !WV.prototype.__ycQuiet) {
+        WV.prototype.__ycQuiet = true;
+        WV.prototype.initExternalReferenceUpdateTimer = function () {};
+      }
+    } catch (e) { /* not same-origin or not an editor frame */ }
+  }
+
   guardUnload(window);
   var latest = null;   // last theme posted by the host
   var slim = false;
@@ -99,6 +177,12 @@
       '--text-normal': t.fg, '--text-normal-pressed': t.fg, '--text-secondary': t['fg-dim'], '--text-tertiary': t['fg-muted'],
       '--text-link': t.link || t.accent, '--text-contrast-background': t.fg,
       '--icon-normal': t.fg, '--icon-normal-pressed': t.fg, '--icon-toolbar-header': t.fg,
+      // WHY (v0.1.4): this build's toolbar icons are SVG symbols stroked with currentColor, and
+      // `svg.icon { color: var(--icon-gray-primary, #383838) }` — no editor theme defines that
+      // variable, so every theme drew the icons near-black, invisible on a dark band (Task 6's
+      // dev run). The icon's main stroke follows the theme's text colour and its secondary fill
+      // the inset surface, like the rest of YouCoded's icons.
+      '--icon-gray-primary': t.fg, '--icon-gray-secondary': t.inset,
       '--border-toolbar': t.edge, '--border-divider': t.edge, '--border-regular-control': t.edge,
       '--border-sidemenu': t.edge, '--border-toolbar-active-panel-top': panel, '--border-control-focus': t.accent,
       '--background-fill-input': t.inset, '--border-fill-input': t.edge,
@@ -137,9 +221,12 @@
     var doc;
     try { doc = win.document; } catch (e) { return; } // not same-origin: not ours
     if (!doc || !doc.head) return;
-    // The theme's own web font (Meadow Mist's Nunito), loaded in this frame too.
+    // The theme's own web font (Meadow Mist's Nunito), loaded in this frame too. WHY only the
+    // editor's own origin's /yc-fonts/css route (v0.1.4): the CSP keeps the editor offline, so a
+    // Google link would be blocked; YouCoded's main process fetches Google's font hosts for it and
+    // serves the stylesheet and files here, on this document's own office://<token> origin.
     (latest.fontLinks || []).forEach(function (href) {
-      if (!/^https:\/\/fonts\.googleapis\.com\//.test(href)) return;
+      if (typeof href !== 'string' || href.indexOf(location.origin + '/yc-fonts/css?') !== 0) return;
       if (doc.querySelector('link[data-yc-font="' + href + '"]')) return;
       var l = doc.createElement('link'); l.rel = 'stylesheet'; l.href = href; l.setAttribute('data-yc-font', href);
       doc.head.appendChild(l);
@@ -177,6 +264,7 @@
 
   function walk(win) {
     guardUnload(win);
+    quietEditor(win);
     if (latest) applyTo(win);
     var frames;
     try { frames = win.document.querySelectorAll('iframe'); } catch (e) { return; }
@@ -248,11 +336,27 @@
     if (json !== lastState) { lastState = json; window.parent.postMessage({ type: 'yc:office-state', state: state }, '*'); }
   }
 
+  // ── Rulers: none in the slim editor ──
+  // WHY: the approved slim design (office-review-3 runs3/after) has no rulers; the editor draws
+  // them in its own canvas, so CSS can't hide them. The document and presentation editors read
+  // 'de-hidden-rulers' / 'pe-hidden-rulers' from localStorage when they start (web-apps
+  // Main.js), so this is set before the editor frame exists (the host posts the mode before it
+  // asks for the file). Set both ways, because the origin is this document's own: the full
+  // editor keeps its rulers. An editor already running is told directly (asc_SetViewRulers).
+  function setRulers() {
+    try {
+      window.localStorage.setItem('de-hidden-rulers', slim ? '1' : '0');
+      window.localStorage.setItem('pe-hidden-rulers', slim ? '1' : '0');
+    } catch (e) { /* no storage: the running-editor call below still applies */ }
+    var api = editorApi();
+    try { if (api && api.asc_SetViewRulers) api.asc_SetViewRulers(!slim); } catch (e) { /* not this editor */ }
+  }
+
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent) return; // only the host frames us
     var d = e.data || {};
     if (d.type === 'yc:office-theme' && d.theme && d.theme.tokens) { latest = d.theme; schedule(); }
-    if (d.type === 'yc:office-mode') { slim = !!d.slim; schedule(); }
+    if (d.type === 'yc:office-mode') { slim = !!d.slim; setRulers(); schedule(); }
     if (d.type === 'yc:office-cmd' && typeof d.cmd === 'string') { run(d.cmd); setTimeout(reportState, 50); }
     // WHY: autosave is the host's decision (3 s after the last change), but the save itself must
     // be the EDITOR's own (asc_Save), the same call Ctrl+S makes. sdkjs records where a save it
