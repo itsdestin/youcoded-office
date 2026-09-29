@@ -258,7 +258,7 @@
     // line; YouCoded's menus (G-21) are the panel with an edge border and a floating-layer shadow,
     // and their rows round their hover fill.
     css += '.dropdown-menu:not(.internal-menu) { border: 1px solid ' + t.edge + I + '; box-shadow: 0 8px 24px rgba(0,0,0,' + o.shadow + ')' + I + '; }' +
-      '.dropdown-menu:not(.internal-menu) > li > a { border-radius: min(' + sm + ', 6px); margin: 0 4px; }' +
+      '.dropdown-menu:not(.internal-menu) > li > a { border-radius: min(' + sm + ', 6px)' + I + '; margin: 0 4px' + I + '; }' +
       '.asc-window { border: 1px solid ' + t.edge + I + '; box-shadow: 0 12px 40px rgba(0,0,0,' + o.shadow + ')' + I + '; }' +
       '.asc-window > .header { border-bottom: 1px solid ' + t.edge + I + '; }';
 
@@ -273,14 +273,16 @@
       // "Interface theme" row goes — YouCoded sets the editor's theme from the app's own on every
       // pass, so a pick there snapped straight back.
       '#file-menu-panel tr.themes, #file-menu-panel tr:has(#fms-cmb-theme) { display: none' + I + '; }' +
-      '#file-menu-panel .panel-menu { background-color: ' + o.panel + I + '; border-right: 1px solid ' + t.edge + I + '; padding: 12px 8px 16px' + I + '; }' +
+      // Opaque, even over a wallpaper: the File tab covers the document, and a see-through
+      // panel showed the page's text through its list and settings (Meadow Mist, 2026-09-28).
+      '#file-menu-panel .panel-menu { background-color: ' + t.panel + I + '; border-right: 1px solid ' + t.edge + I + '; padding: 12px 8px 16px' + I + '; }' +
       '#file-menu-panel .panel-menu li.fm-btn { height: 32px' + I + '; padding: 0 12px' + I + '; margin-bottom: 2px' + I + '; border-radius: ' + md + I + '; }' +
       '#file-menu-panel .panel-menu li.fm-btn > a { font-size: 13px' + I + '; color: ' + t.fg + I + '; }' +
       '#file-menu-panel .panel-menu li.fm-btn:hover:not(.disabled) { background-color: ' + t.inset + I + '; }' +
       '#file-menu-panel .panel-menu li.fm-btn.active:not(.disabled) { background-color: ' + t.inset + I + '; box-shadow: inset 3px 0 0 ' + t.accent + I + '; }' +
       '#file-menu-panel .panel-menu li.fm-btn.active:not(.disabled) > a { font-weight: 600' + I + '; }' +
       '#file-menu-panel #fm-btn-return { margin-bottom: 12px' + I + '; }' +
-      '#file-menu-panel .panel-context { background-color: ' + (o.wallpaper ? o.panel : t.canvas) + I + '; }' +
+      '#file-menu-panel, #file-menu-panel .panel-context { background-color: ' + (t.canvas || t.panel) + I + '; }' +
       '#file-menu-panel .panel-context .header, #file-menu-panel .panel-context h1, #file-menu-panel .panel-context .title { color: ' + t.fg + I + '; }';
     return css;
   }
