@@ -6,10 +6,11 @@ import vm from 'node:vm';
 
 // Loads yc-bridge.js against a fake page: a host window (the parent) and one editor frame
 // whose location is the web-apps editor, as the real page nests it.
-async function loadBridge({ withApi = true } = {}) {
+async function loadBridge({ withApi = true, modified } = {}) {
   const src = await readFile(path.resolve(import.meta.dirname, '..', 'bridge', 'yc-bridge.js'), 'utf8');
   const calls = [];
   const api = { asc_Save: (x) => calls.push(['asc_Save', x]) };
+  if (modified !== undefined) api.isDocumentModified = () => modified;
   const editorWin = { location: 'office://t/web-apps/apps/documenteditor/main/index.html', Asc: withApi ? { editor: api } : undefined };
   editorWin.document = { defaultView: editorWin, querySelectorAll: () => [] };
   const parent = {};
@@ -33,6 +34,18 @@ test("a host save request runs the editor's own save, not LocalFileSave", async 
   const { calls, post } = await loadBridge();
   post({ type: 'yc:office-save' });
   assert.deepEqual(calls, [['asc_Save', false]]);
+});
+
+// v0.1.12: a Save As resets the editor's "modified" flag although the document's own file was not
+// written (the copy went elsewhere), and asc_Save then does nothing. The host asks for a save
+// only when it knows edits are unsaved, so an editor that says "unmodified" saves anyway.
+test('a host save request saves even when the editor thinks nothing changed (after a Save As)', async () => {
+  const { calls, post } = await loadBridge({ modified: false });
+  post({ type: 'yc:office-save' });
+  assert.equal(calls[0][0], 'LocalFileSave');
+  const again = await loadBridge({ modified: true });
+  again.post({ type: 'yc:office-save' });
+  assert.deepEqual(again.calls, [['asc_Save', false]]);
 });
 
 test('a host save request before the editor API exists falls back to LocalFileSave', async () => {

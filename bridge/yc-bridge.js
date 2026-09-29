@@ -604,7 +604,12 @@
   }
   function save() {
     var api = editorApi();
-    if (api && typeof api.asc_Save === 'function') { api.asc_Save(false); return; }
+    // WHY the modified check (v0.1.12): a Save As writes a separate file but still clears the
+    // editor's "modified" flag, and asc_Save then skips the save — the document's own file would
+    // silently miss the edits. The host asks only when it knows edits are unsaved, so an editor
+    // that says "nothing changed" goes straight to LocalFileSave, which saves the current content.
+    var unchanged = api && typeof api.isDocumentModified === 'function' && !api.isDocumentModified();
+    if (api && typeof api.asc_Save === 'function' && !unchanged) { api.asc_Save(false); return; }
     if (window.AscDesktopEditor) window.AscDesktopEditor.LocalFileSave('', '', null, 0, null);
   }
   function run(cmd) {
