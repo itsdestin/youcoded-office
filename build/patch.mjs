@@ -47,8 +47,8 @@ await replaceOnce('editor-patches.js',
 //    editor's own config removes all three; yc-bridge.js hides the File tab items no config
 //    reaches (see HIDDEN_FILE_ITEMS there).
 await replaceOnce('editor-patches.js',
-  "customization: {\n            macros: false,",
-  "customization: {\n            suggestFeature: false,\n            macros: false,");
+  "macrosMode: 'disable',\n",
+  "macrosMode: 'disable',\n            suggestFeature: false,\n");
 await replaceOnce('editor-patches.js', 'print: true', 'print: false');
 const here = path.dirname(new URL(import.meta.url).pathname);
 await copyFile(path.join(here, '..', 'bridge', 'tauri-relay.js'), path.join(dir, 'tauri-relay.js'));

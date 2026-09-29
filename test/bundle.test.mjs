@@ -50,6 +50,13 @@ test('the built editor turns macros off', async () => {
   assert.match(js, /customization: \{\s*macros: false,\s*macrosMode: 'disable',/);
 });
 
+// v0.1.7: no "Suggest a feature" and no printing (the host refuses print_document).
+test('the built editor has no Suggest a feature and no printing', async () => {
+  const js = await readFile(path.join(B, 'editors', 'editor-patches.js'), 'utf8');
+  assert.match(js, /macrosMode: 'disable',\s*suggestFeature: false,/);
+  assert.match(js, /print: false/);
+});
+
 test('bundle carries licence, notice, manifest and templates', async () => {
   for (const f of ['LICENSE', 'NOTICE', 'manifest.json', 'templates/blank.docx', 'templates/blank.xlsx', 'templates/blank.pptx', 'converter/x2t', 'converter/AllFonts.js'])
     await stat(path.join(B, f));
