@@ -28,7 +28,19 @@
       if (name === 'open-file' && !announced) { announced = true; window.parent.postMessage({ yc: 'ready' }, '*'); }
       return Promise.resolve(function () {});
     } },
-    dialog: { confirm: function () { return Promise.resolve(true); }, message: function () { return Promise.resolve(); } },
+    dialog: {
+      confirm: function () { return Promise.resolve(true); },
+      message: function () { return Promise.resolve(); },
+      // WHY (Insert → Picture → From file): bridge.js's OpenFilenameDialog calls this, and without
+      // it the call threw and nothing happened. The host shows its own system dialog and answers
+      // Tauri's shape (a list when multiple, else one entry, null when cancelled) — with opaque
+      // handles, never folders; the editor passes one on to copy-to-media, which only the host
+      // can resolve. Only the two fields the dialog needs go across.
+      open: function (o) {
+        o = o || {};
+        return invoke('open_dialog', { multiple: !!o.multiple, filters: Array.isArray(o.filters) ? o.filters : [] });
+      },
+    },
     window: { getCurrentWindow: function () { return { setTitle: function () { return Promise.resolve(); }, close: function () { return Promise.resolve(); }, onCloseRequested: function () { return Promise.resolve(function () {}); } }; } },
   };
 })();

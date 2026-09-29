@@ -73,7 +73,55 @@
       catch (e) { /* already sealed, or not same-origin */ }
     }
   }
+  // ── Pictures dragged onto the document ──
+  // WHY: sdkjs's desktop drop handler asks the host for the dropped files' PATHS
+  // (AscDesktopEditor.GetDropFiles, then IsImageFile) — Euro-Office's bridge.js defines neither, so
+  // every drop (a picture, or text from another app) threw and the editor showed "An error
+  // occurred". A web page never learns a dropped file's path, and YouCoded's host must never read
+  // a path the frame names. So each editor frame's drop is noted first (capture phase, before
+  // sdkjs's own handler), and GetDropFiles sends the first dropped picture's BYTES to this
+  // document's own origin (upload/, which checks type and size and stores it in the document's
+  // pictures) and answers its bare media name. sdkjs then resolves that name through
+  // LocalFileGetImageUrl, as for a picture chosen in the file dialog. No picture → [] and sdkjs
+  // pastes the drop's text instead.
+  var dropped = null;
+  function watchDrops(win) {
+    try {
+      if (!win || win.__ycDropWatch || !win.addEventListener) return;
+      win.__ycDropWatch = true;
+      win.addEventListener('drop', function (e) { dropped = e.dataTransfer ? e.dataTransfer.files : null; }, true);
+    } catch (e) { /* not same-origin */ }
+  }
+  function droppedPictures() {
+    var files = dropped || [];
+    dropped = null;
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      if (!f || !/^image\//.test(f.type || '')) continue;
+      try {
+        var x = new XMLHttpRequest();
+        x.open('POST', location.origin + '/upload/drop', false); // sdkjs asks synchronously
+        x.setRequestHeader('Content-Type', f.type);
+        x.send(f);
+        if (x.status !== 200) return [];
+        var key = Object.keys(JSON.parse(x.responseText))[0] || '';
+        return key ? [key.replace(/^media\//, '')] : [];
+      } catch (e) { return []; }
+    }
+    return [];
+  }
+  // WHY every frame's: the editor frame holds its own AscDesktopEditor object, not the host
+  // page's (measured in the dev window), and sdkjs's drop handler reads the one of its frame.
+  function extendDesktopEditor(win) {
+    var d;
+    try { d = win.AscDesktopEditor; } catch (e) { return; }
+    if (!d || d.GetDropFiles) return;
+    d.GetDropFiles = droppedPictures;
+    d.IsImageFile = function (name) { return /\.(png|jpe?g|gif|bmp|svg|webp|ico)$/i.test(String(name || '')); };
+  }
   function guardAll(win) {
+    extendDesktopEditor(win);
+    watchDrops(win);
     blockPeers(win);
     guardUnload(win);
     quietEditor(win);
@@ -367,8 +415,14 @@
       polishCss(t, { panel: panel, thumb: thumb, thumbHover: thumbHover, tile: tile, shadow: shadow, wallpaper: th.wallpaper });
     if (th.wallpaper) {
       css += 'html, body, #viewport, .layout-region, #editor_sdk, #id_main, #ws-canvas-outer, .ws-canvas-area { background-color: transparent !important; }' +
-        '#toolbar .toolbar, #statusbar, .statusbar, #left-menu, #right-menu, .right-panel { background: ' + panel + ' !important;' +
-        (th.panelsBlur ? ' backdrop-filter: blur(' + th.panelsBlur + 'px);' : '') + ' }';
+        '#toolbar .toolbar, #statusbar, .statusbar, #left-menu, #right-menu, .right-panel { background: ' + panel + ' !important; }' +
+        // WHY on a layer behind each panel, not the panel (v0.1.9): a backdrop-filter makes its
+        // element the frame of every position:fixed menu inside it, so the right panel's menus
+        // (the slide background's "Select picture", among others) opened ~1400px to the right,
+        // off screen. Each of these four is already positioned (relative/absolute), so the layer
+        // fills it exactly; z-index -1 keeps it under the panel's content. The static
+        // .right-panel/.statusbar sit inside #right-menu/#statusbar and share their layer.
+        (th.panelsBlur ? '#toolbar .toolbar::before, #statusbar::before, #left-menu::before, #right-menu::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit; backdrop-filter: blur(' + th.panelsBlur + 'px); }' : '');
     }
     if (slim) {
       css += '#toolbar, #statusbar, .statusbar, #left-menu, #right-menu, .right-panel, .left-panel { display: none !important; }';

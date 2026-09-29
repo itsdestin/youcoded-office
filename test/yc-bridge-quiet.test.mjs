@@ -212,3 +212,22 @@ test('the canvases get the theme\'s scrollbar and header colours whenever the th
   assert.equal(skins.length, 2);
   assert.equal(skins[1]['canvas-scroll-thumb'], '#abcdef');
 });
+
+// The panels' blur over a wallpaper must not move the menus that open from them. A
+// backdrop-filter makes its element the frame of every position:fixed menu inside it, so the
+// right panel's menus (the slide background's "Select picture" → From file among them) opened
+// ~1400px to the right, off screen (measured in the dev window). The blur sits on a layer
+// behind each panel instead.
+test('the panel blur never sits on a panel itself, only on a layer behind it', async () => {
+  const { post, tick, head } = await load();
+  post({ type: 'yc:office-theme', theme: theme({ wallpaper: true, panelsBlur: 12 }) });
+  tick();
+  const css = head.children.find((c) => c.id === 'yc-office-theme').textContent;
+  const rules = css.split('}').filter((r) => r.includes('backdrop-filter'));
+  assert.ok(rules.length > 0, 'the blur is still there');
+  for (const r of rules) {
+    const selectors = r.split('{')[0].split(',').map((s) => s.trim());
+    for (const s of selectors) assert.match(s, /::before$/, `${s} carries the blur itself`);
+  }
+  assert.match(css, /#right-menu::before/);
+});
