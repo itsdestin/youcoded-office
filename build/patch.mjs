@@ -41,6 +41,15 @@ if (!pages) { console.error('patch: no editor pages found under web-apps/apps/*/
 await replaceOnce('editor-patches.js',
   "customization: {\n            about: false,",
   "customization: {\n            macros: false,\n            macrosMode: 'disable',\n            about: false,");
+// 5. File tab (v0.1.7): no "Suggest a feature" (it opens a web page) and no printing. WHY print:
+//    printing ends in bridge.js's print_document, a command YouCoded's host refuses, so Print (the
+//    File tab item, its toolbar button and Ctrl+P) failed silently. Switching it off in the
+//    editor's own config removes all three; yc-bridge.js hides the File tab items no config
+//    reaches (see HIDDEN_FILE_ITEMS there).
+await replaceOnce('editor-patches.js',
+  "customization: {\n            macros: false,",
+  "customization: {\n            suggestFeature: false,\n            macros: false,");
+await replaceOnce('editor-patches.js', 'print: true', 'print: false');
 const here = path.dirname(new URL(import.meta.url).pathname);
 await copyFile(path.join(here, '..', 'bridge', 'tauri-relay.js'), path.join(dir, 'tauri-relay.js'));
 await copyFile(path.join(here, '..', 'bridge', 'yc-bridge.js'), path.join(dir, 'yc-bridge.js'));

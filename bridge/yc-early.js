@@ -63,6 +63,91 @@
   function quietWorkbookView(View) {
     if (View && View.prototype) View.prototype.initExternalReferenceUpdateTimer = function () {};
   }
-  onDefine(window, 'AscCommon', function (ns) { onDefine(ns, 'baseEditorsApi', quietApi); });
+  // ── Slim, rounded scrollbars in the document and sheet canvases (v0.1.7) ──
+  // WHY (Destin, 2026-09-28: "all of the scrollbars are unstyled"): sdkjs draws these scrollbars
+  // itself, on canvases (common/scroll.js ScrollObject), so CSS cannot reach them. Its own drawing
+  // is a square, outlined thumb with grip stripes and arrow buttons at both ends — and it paints
+  // the thumb in grey only, from the RED channel of the theme colour, so a green thumb came out
+  // dark grey. YouCoded's scrollbars are a slim rounded thumb in the theme's --scrollbar-thumb /
+  // --scrollbar-hover colours with no arrows (renderer globals.css). So:
+  //   - every ScrollSettings is made without arrows (the thumb then has the whole track; the
+  //     wheel, a drag and a click on the track still scroll), and
+  //   - ScrollObject.prototype._drawScroll draws a 6px rounded thumb in the real colours, over a
+  //     clear track (the desk shows through). sdkjs animates hover by passing a grey level
+  //     between the default and hover colours' red channels; that is mapped back onto the two
+  //     real colours, so the fade still works.
+  function hexRgb(c) {
+    var m = /^#?([0-9a-f]{6})/i.exec(String(c || '').trim());
+    if (!m) return null;
+    var n = parseInt(m[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function thumbColour(settings, level) {
+    var base = hexRgb(settings.scrollerColor), hover = hexRgb(settings.scrollerHoverColor), active = hexRgb(settings.scrollerActiveColor);
+    if (!base) return settings.scrollerColor || '#888';
+    hover = hover || base; active = active || hover;
+    var t = 0;
+    if (active[0] !== hover[0] && Math.round(level) === active[0]) return 'rgb(' + active.join(',') + ')';
+    if (hover[0] !== base[0]) t = Math.max(0, Math.min(1, (level - base[0]) / (hover[0] - base[0])));
+    else if (Math.round(level) !== base[0]) t = 1;
+    return 'rgb(' + [0, 1, 2].map(function (i) { return Math.round(base[i] + (hover[i] - base[i]) * t); }).join(',') + ')';
+  }
+  function slimSettings(Orig) {
+    if (typeof Orig !== 'function' || Orig.__ycSlim) return Orig;
+    var Slim = function () { Orig.apply(this, arguments); this.showArrows = false; };
+    Slim.prototype = Orig.prototype;
+    for (var k in Orig) if (Object.prototype.hasOwnProperty.call(Orig, k)) Slim[k] = Orig[k];
+    Slim.__ycSlim = true;
+    return Slim;
+  }
+  function drawSlim(fillLevel, targetLevel, strokeLevel) {
+    var s = this.settings, ctx = this.context, sc = this.scroller;
+    this.scrollColor = fillLevel; this.targetColor = targetLevel; this.strokeColor = strokeLevel;
+    if (!ctx || !s || !sc) return;
+    var br = window.AscCommon && window.AscCommon.AscBrowser;
+    var dpr = (br && br.retinaPixelRatio) || 1;
+    var th = Math.max(2, Math.round(6 * dpr));
+    ctx.clearRect(0, 0, this.canvasW, this.canvasH);
+    var x, y, w, h;
+    if (s.isVerticalScroll && this.maxScrollY != 0) {
+      x = Math.round(sc.x + (sc.w - th) / 2); w = th;
+      y = Math.max(0, Math.round(sc.y)); h = Math.min(this.canvasH - y, Math.round(sc.h));
+    } else if (s.isHorizontalScroll && this.maxScrollX != 0) {
+      y = Math.round(sc.y + (sc.h - th) / 2); h = th;
+      x = Math.max(0, Math.round(sc.x)); w = Math.min(this.canvasW - x, Math.round(sc.w));
+    } else return;
+    if (w <= 0 || h <= 0) return;
+    var r = th / 2;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h); ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+    ctx.fillStyle = thumbColour(s, fillLevel);
+    ctx.fill();
+  }
+  function slimScroll(ScrollObject) {
+    if (ScrollObject && ScrollObject.prototype) ScrollObject.prototype._drawScroll = drawSlim;
+  }
+  // Like onDefine, but the value itself is replaced (a constructor wrapped) rather than patched.
+  function onDefineWrap(owner, name, wrap) {
+    var value = owner[name] ? wrap(owner[name]) : owner[name];
+    try {
+      Object.defineProperty(owner, name, {
+        configurable: true,
+        enumerable: true,
+        get: function () { return value; },
+        set: function (v) { try { value = wrap(v); } catch (e) { value = v; } },
+      });
+    } catch (e) { /* not definable: the editor keeps its own scrollbars */ }
+  }
+
+  onDefine(window, 'AscCommon', function (ns) {
+    onDefine(ns, 'baseEditorsApi', quietApi);
+    onDefineWrap(ns, 'ScrollSettings', slimSettings);
+    onDefine(ns, 'ScrollObject', slimScroll);
+  });
   onDefine(window, 'AscCommonExcel', function (ns) { onDefine(ns, 'WorkbookView', quietWorkbookView); });
 })();

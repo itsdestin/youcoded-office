@@ -138,3 +138,77 @@ test('the theme font loads only through the editor\'s own origin, never from Goo
   const links = head.children.filter((c) => c.tag === 'link').map((l) => l.href);
   assert.deepEqual(links, [own]);
 });
+
+// v0.1.7, the polish pass (Destin, 2026-09-28): the File tab shows only what works inside
+// YouCoded, scrollbars wear the app's thumb colours, gallery tiles stay square.
+const cssOf = (head) => head.children.find((c) => c.id === 'yc-office-theme').textContent;
+const hiddenIds = (css) => {
+  const m = /([^{}]*)\{ display: none !important; \}/g;
+  const ids = new Set();
+  for (const r of css.matchAll(m)) for (const id of r[1].matchAll(/#file-menu-panel #([\w-]+)/g)) ids.add(id[1]);
+  return ids;
+};
+
+test('the File tab hides what cannot work in YouCoded and keeps what does', async () => {
+  const { post, tick, head } = await load();
+  post({ type: 'yc:office-theme', theme: theme() });
+  tick();
+  const hidden = hiddenIds(cssOf(head));
+  // The start screen opens and creates; the tab closes; the host refuses the save dialog,
+  // save_file_as, print_document and remove_note_separator; YouCoded has its own Versions;
+  // the rest needs a document server or the internet.
+  for (const id of ['fm-btn-local-open', 'fm-btn-recent', 'fm-btn-create', 'fm-btn-exit', 'fm-btn-download',
+    'fm-btn-save-desktop', 'fm-btn-save-copy', 'fm-btn-export-pdf', 'fm-btn-print', 'fm-btn-print-with-preview',
+    'fm-btn-eo-note-separator', 'fm-btn-history', 'fm-btn-rights', 'fm-btn-help', 'fm-btn-suggest']) {
+    assert.ok(hidden.has(id), `${id} is hidden`);
+  }
+  for (const id of ['fm-btn-return', 'fm-btn-save', 'fm-btn-info', 'fm-btn-settings']) {
+    assert.ok(!hidden.has(id), `${id} stays`);
+  }
+});
+
+test('panel and menu scrollbars wear the app\'s thumb and hover colours', async () => {
+  const { post, tick, head } = await load();
+  post({ type: 'yc:office-theme', theme: theme({ tokens: { ...theme().tokens, 'scrollbar-thumb': '#123456', 'scrollbar-hover': '#654321' } }) });
+  tick();
+  const css = cssOf(head);
+  assert.match(css, /::-webkit-scrollbar-thumb \{ background: #123456; border-radius: 4px; \}/);
+  assert.match(css, /::-webkit-scrollbar-thumb:hover \{ background: #654321; \}/);
+  assert.match(css, /\.ps-scrollbar-x\.always-visible-x \{ background: #123456 !important; border: 0 !important; border-radius: 3px !important; \}/);
+  assert.match(css, /--canvas-scroll-thumb:#123456 !important/);
+});
+
+test('a host without scrollbar tokens still gets themed scrollbars (the edge colour)', async () => {
+  const { post, tick, head } = await load();
+  post({ type: 'yc:office-theme', theme: theme() });
+  tick();
+  assert.match(cssOf(head), /::-webkit-scrollbar-thumb \{ background: #333333;/);
+});
+
+test('style-gallery tiles are square; only the gallery frame is rounded', async () => {
+  const { post, tick, head } = await load();
+  post({ type: 'yc:office-theme', theme: theme({ tokens: { ...theme().tokens, 'radius-sm': '16px', 'radius-md': '26px' } }) });
+  tick();
+  const css = cssOf(head);
+  assert.match(css, /\.combo-dataview \.view \.item, \.combo-dataview \.view \.item canvas[^{]*\{ border-radius: 0 !important; \}/);
+  assert.match(css, /\.combo-dataview \.view \{ border-radius: 16px 0 0 16px !important; \}/);
+  // Other gallery items and swatches: a few pixels at most, whatever the theme's small radius.
+  assert.match(css, /--border-radius-dataview-item:min\(16px, 3px\) !important/);
+});
+
+test('the canvases get the theme\'s scrollbar and header colours whenever the theme changes', async () => {
+  const { post, tick, editorWin } = await load();
+  const skins = [];
+  editorWin.Asc.editor.asc_setSkin = (s) => skins.push(s);
+  post({ type: 'yc:office-theme', theme: theme({ tokens: { ...theme().tokens, 'scrollbar-thumb': '#123456' } }) });
+  tick();
+  tick(); // nothing changed: not handed over again
+  assert.equal(skins.length, 1);
+  assert.equal(skins[0]['canvas-scroll-thumb'], '#123456');
+  assert.equal(skins[0]['canvas-cell-title-background'], '#111111');
+  assert.equal(skins[0].name, undefined, 'the editor keeps its own light/dark theme');
+  post({ type: 'yc:office-theme', theme: theme({ tokens: { ...theme().tokens, 'scrollbar-thumb': '#abcdef' } }) });
+  tick();
+  assert.equal(skins.length, 2);
+  assert.equal(skins[1]['canvas-scroll-thumb'], '#abcdef');
+});

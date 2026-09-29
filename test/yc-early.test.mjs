@@ -60,3 +60,49 @@ test('an editor page cannot open a peer-to-peer connection, or restore one', asy
     assert.equal(Reflect.deleteProperty(a, name), false);
   }
 });
+
+// v0.1.7: sdkjs draws the document and sheet scrollbars on canvases. They lose their arrows and
+// get a slim rounded thumb in the theme's real colours (sdkjs's own drawing used only the red
+// channel, so a green thumb came out grey).
+function fakeCanvas() {
+  const ops = [];
+  const ctx = new Proxy({}, {
+    get: (_, k) => (k === 'ops' ? ops : (...a) => ops.push([k, ...a])),
+    set: (_, k, v) => { ops.push([k, v]); return true; },
+  });
+  return ctx;
+}
+
+test('canvas scrollbars have no arrow buttons', async () => {
+  const a = await editorPage();
+  a.AscCommon = a.AscCommon || {};
+  a.AscCommon.ScrollSettings = function () { this.showArrows = true; this.cornerRadius = 0; };
+  const s = new a.AscCommon.ScrollSettings();
+  assert.equal(s.showArrows, false);
+  assert.equal(s.cornerRadius, 0, 'everything else is sdkjs\'s own');
+  assert.ok(s instanceof a.AscCommon.ScrollSettings);
+});
+
+test('a canvas scrollbar thumb is drawn slim and rounded in the theme colour, then its hover colour', async () => {
+  const a = await editorPage();
+  a.AscCommon = a.AscCommon || {};
+  function ScrollObject() {}
+  ScrollObject.prototype._drawScroll = function () { throw new Error('sdkjs drawing'); };
+  a.AscCommon.ScrollObject = ScrollObject;
+  const so = new ScrollObject();
+  so.context = fakeCanvas();
+  so.settings = { isVerticalScroll: true, scrollerColor: '#2f7d55', scrollerHoverColor: '#24613f', scrollerActiveColor: '#24613f' };
+  so.scroller = { x: 1, y: 40, w: 12, h: 80 };
+  so.canvasW = 14; so.canvasH = 600; so.maxScrollY = 500;
+  so._drawScroll(0x2f, 0x2f, 0x2f);
+  const fills = so.context.ops.filter((o) => o[0] === 'fillStyle').map((o) => o[1]);
+  assert.deepEqual(fills, ['rgb(47,125,85)']);
+  assert.ok(so.context.ops.some((o) => o[0] === 'arcTo'), 'rounded');
+  const moveTo = so.context.ops.find((o) => o[0] === 'moveTo');
+  assert.equal(moveTo[1], 4 + 3, 'a 6px thumb centred in the 12px scroller');
+  assert.ok(!so.context.ops.some((o) => o[0] === 'stroke'), 'no outline');
+  so.context.ops.length = 0;
+  so._drawScroll(0x24, 0x24, 0x24);
+  assert.deepEqual(so.context.ops.filter((o) => o[0] === 'fillStyle').map((o) => o[1]), ['rgb(36,97,63)']);
+  assert.equal(so.scrollColor, 0x24, 'sdkjs\'s own hover bookkeeping still runs');
+});

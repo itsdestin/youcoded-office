@@ -172,10 +172,130 @@
     return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + alpha + ')';
   }
 
+  // ── The File tab (backstage): only what works inside YouCoded (v0.1.7) ──
+  // WHY each is hidden (audited in all three editors, 2026-09-28): Open / Open Recent / Create
+  // new — the Office start screen does these; Close / Exit — the document's tab does it; Export
+  // ("Download as"), Save As, Save copy, Export to PDF and Print — each ends in a call YouCoded's
+  // host refuses (a save dialog, save_file_as, print_document), so they failed silently; "Note
+  // lines" (remove_note_separator) — refused the same way; Version history — YouCoded has its own
+  // Versions; Access rights, Help, Suggest a feature — they need a document server or the
+  // internet. Print and Suggest are also switched off in the editor's own config (build/patch.mjs);
+  // this list is the second line, and covers the ones no config reaches. Kept: Back, Save (the
+  // same save Ctrl+S and autosave make), Info (Document info) and Advanced settings.
+  var HIDDEN_FILE_ITEMS = [
+    'fm-btn-local-open', 'fm-btn-recent', 'fm-btn-create', 'fm-btn-exit', 'fm-btn-back',
+    'fm-btn-download', 'fm-btn-save-desktop', 'fm-btn-save-copy', 'fm-btn-export-pdf',
+    'fm-btn-print', 'fm-btn-print-with-preview', 'fm-btn-eo-note-separator',
+    'fm-btn-history', 'fm-btn-rights', 'fm-btn-help', 'fm-btn-suggest', 'fm-btn-rename',
+  ];
+
+  // The polish pass (v0.1.7, Destin: "weird rounded pills but also square outlines", "all of the
+  // scrollbars are unstyled", "hard to separate some of the side panels and menus … from the
+  // document area", "some of the options under the file tab are just odd or don't seem to work").
+  function polishCss(t, o) {
+    var I = ' !important';
+    var css = '';
+    // A theme that leaves out a radius gets YouCoded's default for it, never "undefined".
+    var sm = t['radius-sm'] || '4px', md = t['radius-md'] || '8px';
+    // ── 1. Roundness: galleries are tiles in a grid, not pills ──
+    // WHY: the style galleries (Home > cell styles, the document and slide style galleries, table
+    // templates) are a grid of tiles whose square 1px borders overlap by a pixel. Rounding the
+    // tile (and its preview canvas) drew a pill inside each square outline. The tiles stay
+    // square; the gallery's frame is the one rounded shape, with the small radius on its outer
+    // corners, and the "more" button closes it on the right.
+    css += '.combo-dataview .view .item, .combo-dataview .view .item canvas, .combo-dataview .view .item img,' +
+      ' .combo-dataview .dropdown-menu .item, .combo-dataview .dropdown-menu .item canvas, .combo-dataview .dropdown-menu .item img { border-radius: 0' + I + '; }' +
+      '.combo-dataview .view { border-radius: ' + sm + ' 0 0 ' + sm + I + '; }' +
+      '.combo-dataview .button button { border-radius: 0 ' + sm + ' ' + sm + ' 0' + I + '; }' +
+      '.rtl .combo-dataview .view { border-radius: 0 ' + sm + ' ' + sm + ' 0' + I + '; }' +
+      '.rtl .combo-dataview .button button { border-radius: ' + sm + ' 0 0 ' + sm + I + '; }';
+    // WHY: colour swatches (palettes, the font / highlight colour bars under their buttons) are
+    // content, not controls — a tiny radius at most, so their outline and fill stay one shape.
+    css += '.color-palette .palette-color-item, .theme-colorpalette .color-item, .dataview .item.color, .btn-color .caret-swatch,' +
+      ' .color-preview, .color-transparent { border-radius: ' + o.tile + I + '; }';
+
+    // ── 2. Scrollbars: slim, rounded, the app's thumb colours ──
+    // WHY: YouCoded's renderer styles its scrollbars (globals.css: 8px, transparent track,
+    // --scrollbar-thumb / --scrollbar-hover, rounded thumb); the editor's panels and menus showed
+    // the system's grey bars, and its own "perfect scrollbar" drew a square bordered thumb with
+    // grip stripes. Both now match the app. The document and sheet canvases draw theirs in
+    // script — yc-early.js makes those slim and rounded, and the --canvas-scroll-* colours
+    // above give them the same thumb colours.
+    css += '::-webkit-scrollbar { width: 8px; height: 8px; }' +
+      '::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }' +
+      '::-webkit-scrollbar-thumb { background: ' + o.thumb + '; border-radius: 4px; }' +
+      '::-webkit-scrollbar-thumb:hover { background: ' + o.thumbHover + '; }' +
+      '::-webkit-scrollbar-button { display: none; }' +
+      '.ps-container .ps-scrollbar-y-rail, .ps-container .ps-scrollbar-x-rail, .ps-container:hover .ps-scrollbar-y-rail,' +
+      ' .ps-container:hover .ps-scrollbar-x-rail, .ps-container .ps-scrollbar-y-rail.hover, .ps-container .ps-scrollbar-x-rail.hover,' +
+      ' .ps-container.ps-in-scrolling .ps-scrollbar-y-rail, .ps-container.ps-in-scrolling .ps-scrollbar-x-rail,' +
+      ' .ps-container .ps-scrollbar-y-rail.in-scrolling, .ps-container .ps-scrollbar-x-rail.in-scrolling { background-color: transparent' + I + '; }' +
+      '.ps-container .ps-scrollbar-y-rail { width: 8px' + I + '; }' +
+      '.ps-container .ps-scrollbar-x-rail { height: 8px' + I + '; }' +
+      '.ps-container .ps-scrollbar-y, .ps-container .ps-scrollbar-y.always-visible-y { width: 6px' + I + '; right: 1px' + I + '; }' +
+      '.ps-container .ps-scrollbar-x, .ps-container .ps-scrollbar-x.always-visible-x { height: 6px' + I + '; bottom: 1px' + I + '; }' +
+      '.ps-container .ps-scrollbar-y, .ps-container .ps-scrollbar-x, .ps-container .ps-scrollbar-y.always-visible-y,' +
+      ' .ps-container .ps-scrollbar-x.always-visible-x { background: ' + o.thumb + I + '; border: 0' + I + '; border-radius: 3px' + I + '; }' +
+      '.ps-container .ps-scrollbar-y-rail:hover .ps-scrollbar-y, .ps-container .ps-scrollbar-x-rail:hover .ps-scrollbar-x,' +
+      ' .ps-container .ps-scrollbar-y-rail.in-scrolling .ps-scrollbar-y, .ps-container .ps-scrollbar-x-rail.in-scrolling .ps-scrollbar-x,' +
+      ' .ps-container .ps-scrollbar-y-rail:hover .ps-scrollbar-y.always-visible-y, .ps-container .ps-scrollbar-x-rail:hover .ps-scrollbar-x.always-visible-x { background: ' + o.thumbHover + I + '; }' +
+      '.ps-container .ps-scrollbar-y div, .ps-container .ps-scrollbar-x div { display: none' + I + '; }';
+
+    // ── 3. Separation: canvas behind, panel for bands, edges between regions ──
+    // WHY: the ribbon, the side strips, the open side panels, the formula bar, the status bar
+    // and the document desk were all near one colour with no line between them. YouCoded's
+    // layering (guide §2.1, §2.4): the desk is the canvas; bands and side panes are the panel;
+    // fields are inset; a 1px edge hairline sits between regions. Hairlines are inset shadows,
+    // not borders, so the editor's own layout (it measures these boxes in script) does not move.
+    css += '#toolbar > .toolbar, #toolbar .toolbar.toolbar-mask { box-shadow: inset 0 0 0 1px ' + t.edge + I + '; }' +
+      '#statusbar, .statusbar { box-shadow: inset 0 1px 0 ' + t.edge + I + '; }' +
+      '#left-menu .tool-menu-btns, #left-menu.tool-menu, .tool-menu.left .tool-menu-btns { box-shadow: inset -1px 0 0 ' + t.edge + I + '; }' +
+      '#right-menu .tool-menu-btns, .tool-menu.right .tool-menu-btns { box-shadow: inset 1px 0 0 ' + t.edge + I + '; }' +
+      '.left-panel, #left-panel-search, #left-panel-comments, #left-panel-chat, #left-panel-navigation, #left-panel-thumbnails { background-color: ' + o.panel + I + '; box-shadow: inset -1px 0 0 ' + t.edge + I + '; }' +
+      '.right-panel, #right-menu .right-panel { background-color: ' + o.panel + I + '; box-shadow: inset 1px 0 0 ' + t.edge + I + '; }' +
+      '#cell-editing-box { box-shadow: inset 0 -1px 0 ' + t.edge + I + '; }';
+    // WHY: a menu or dropdown opened over the ribbon was the ribbon's own colour with a faint
+    // line; YouCoded's menus (G-21) are the panel with an edge border and a floating-layer shadow,
+    // and their rows round their hover fill.
+    css += '.dropdown-menu:not(.internal-menu) { border: 1px solid ' + t.edge + I + '; box-shadow: 0 8px 24px rgba(0,0,0,' + o.shadow + ')' + I + '; }' +
+      '.dropdown-menu:not(.internal-menu) > li > a { border-radius: min(' + sm + ', 6px); margin: 0 4px; }' +
+      '.asc-window { border: 1px solid ' + t.edge + I + '; box-shadow: 0 12px 40px rgba(0,0,0,' + o.shadow + ')' + I + '; }' +
+      '.asc-window > .header { border-bottom: 1px solid ' + t.edge + I + '; }';
+
+    // ── 4. The File tab (backstage) ──
+    // WHY: items that cannot work here are hidden (HIDDEN_FILE_ITEMS says why for each), with the
+    // dividers that only separated them. What remains is styled like YouCoded's own side list:
+    // the panel surface, rounded rows, hover one step down the depth ladder, the open item on the
+    // inset surface; the page beside it is the canvas, so the list and the page read as two areas.
+    css += HIDDEN_FILE_ITEMS.map(function (id) { return '#file-menu-panel #' + id; }).join(', ') + ' { display: none' + I + '; }' +
+      '#file-menu-panel .panel-menu li.devider, #file-menu-panel .panel-menu li.devider-small { display: none' + I + '; }' +
+      // WHY: Advanced settings stays (its choices apply to the open document), but its
+      // "Interface theme" row goes — YouCoded sets the editor's theme from the app's own on every
+      // pass, so a pick there snapped straight back.
+      '#file-menu-panel tr.themes, #file-menu-panel tr:has(#fms-cmb-theme) { display: none' + I + '; }' +
+      '#file-menu-panel .panel-menu { background-color: ' + o.panel + I + '; border-right: 1px solid ' + t.edge + I + '; padding: 12px 8px 16px' + I + '; }' +
+      '#file-menu-panel .panel-menu li.fm-btn { height: 32px' + I + '; padding: 0 12px' + I + '; margin-bottom: 2px' + I + '; border-radius: ' + md + I + '; }' +
+      '#file-menu-panel .panel-menu li.fm-btn > a { font-size: 13px' + I + '; color: ' + t.fg + I + '; }' +
+      '#file-menu-panel .panel-menu li.fm-btn:hover:not(.disabled) { background-color: ' + t.inset + I + '; }' +
+      '#file-menu-panel .panel-menu li.fm-btn.active:not(.disabled) { background-color: ' + t.inset + I + '; box-shadow: inset 3px 0 0 ' + t.accent + I + '; }' +
+      '#file-menu-panel .panel-menu li.fm-btn.active:not(.disabled) > a { font-weight: 600' + I + '; }' +
+      '#file-menu-panel #fm-btn-return { margin-bottom: 12px' + I + '; }' +
+      '#file-menu-panel .panel-context { background-color: ' + (o.wallpaper ? o.panel : t.canvas) + I + '; }' +
+      '#file-menu-panel .panel-context .header, #file-menu-panel .panel-context h1, #file-menu-panel .panel-context .title { color: ' + t.fg + I + '; }';
+    return css;
+  }
+
   function buildCss(th) {
     var t = th.tokens;
     var glass = th.wallpaper ? Math.max(0.35, Math.min(1, th.panelsOpacity || 0.6)) : 1;
     var panel = rgba(t.panel, glass);
+    // WHY a fallback: a host older than v0.1.7's app change does not send the scrollbar tokens.
+    var thumb = t['scrollbar-thumb'] || t.edge, thumbHover = t['scrollbar-hover'] || t['fg-faint'] || t.edge;
+    // Small radii for things that must stay nearly square (tiles, swatches, checkboxes): the
+    // theme's small radius, but never more than a few pixels — a 16px "small" radius (Strawberry
+    // Kitty) on a 12px swatch drew a circle inside a square outline.
+    var tile = 'min(' + (t['radius-sm'] || '4px') + ', 3px)';
+    var shadow = th.dark ? '0.45' : '0.16';
     var v = {
       // Header and toolbar bands: the panel surface, never OnlyOffice's per-app colour.
       '--toolbar-header-document': panel, '--toolbar-header-spreadsheet': panel,
@@ -201,19 +321,38 @@
       // the inset surface, like the rest of YouCoded's icons.
       '--icon-gray-primary': t.fg, '--icon-gray-secondary': t.inset,
       '--border-toolbar': t.edge, '--border-divider': t.edge, '--border-regular-control': t.edge,
-      '--border-sidemenu': t.edge, '--border-toolbar-active-panel-top': panel, '--border-control-focus': t.accent,
+      // WHY a full border (v0.1.7): the editor reads --border-sidemenu as a whole `border` value
+      // (`var(--scaled-one-pixel) solid var(--border-toolbar)`); a bare colour made it invalid,
+      // so the side strips had no edge at all against the document.
+      '--border-sidemenu': '1px solid ' + t.edge, '--border-toolbar-active-panel-top': panel, '--border-control-focus': t.accent,
       '--background-fill-input': t.inset, '--border-fill-input': t.edge,
+      '--border-preview-hover': t['fg-faint'] || t.edge, '--border-preview-select': t.accent,
       '--canvas-background': th.wallpaper ? 'transparent' : t.canvas,
       '--canvas-content-background': '#fff', '--canvas-page-border': t.edge,
       '--canvas-ruler-background': panel, '--canvas-ruler-border': t.edge, '--canvas-ruler-margins-background': t.inset,
-      '--canvas-high-contrast': t.fg, '--canvas-scroll-thumb': t.edge, '--canvas-scroll-thumb-hover': t['fg-faint'],
-      '--canvas-scroll-arrow': t['fg-muted'], '--canvas-background-tabs': panel,
-      // Roundness: YouCoded's four radii by role (guide G-3).
-      '--border-radius-button-normal': t['radius-md'], '--border-radius-button-base': t['radius-md'],
-      '--border-radius-button-toolbar': t['radius-md'], '--border-radius-button-category': t['radius-md'],
-      '--border-radius-toolbar': t['radius-lg'], '--border-radius-form-control': t['radius-md'],
-      '--border-radius-dropdown-menu': t['radius-md'], '--border-radius-dataview-item': t['radius-md'],
-      '--border-radius-window': t['radius-lg'], '--border-radius-checkbox': t['radius-sm'],
+      '--canvas-high-contrast': t.fg,
+      // Scrollbars drawn in the document and sheet canvases: the app's own thumb and hover
+      // colours, no outline (the outline takes the thumb's own colour), no grip stripes.
+      '--canvas-scroll-thumb': thumb, '--canvas-scroll-thumb-hover': thumbHover, '--canvas-scroll-thumb-pressed': thumbHover,
+      '--canvas-scroll-thumb-border': thumb, '--canvas-scroll-thumb-border-hover': thumbHover, '--canvas-scroll-thumb-border-pressed': thumbHover,
+      '--canvas-scroll-thumb-target': thumb, '--canvas-scroll-thumb-target-hover': thumbHover, '--canvas-scroll-thumb-target-pressed': thumbHover,
+      '--canvas-scroll-arrow': t['fg-muted'], '--canvas-scroll-arrow-hover': t.fg, '--canvas-scroll-arrow-pressed': t.fg,
+      '--canvas-background-tabs': panel,
+      // The sheet's row and column headers: a band of the panel surface, one step down on hover,
+      // the edge colour where selected — the same ladder as every other control.
+      '--canvas-cell-title-background': t.panel, '--canvas-cell-title-background-hover': t.inset,
+      '--canvas-cell-title-background-selected': t.edge, '--canvas-cell-title-border': t.edge,
+      '--canvas-cell-title-border-hover': t.edge, '--canvas-cell-title-border-selected': t.edge,
+      '--canvas-cell-title-text': t['fg-dim'] || t.fg,
+      // Roundness by role (guide G-3), v0.1.7: controls follow the theme — toolbar icons and
+      // fields the small radius, buttons and menus the medium, the ribbon and dialogs the large.
+      // Content tiles (gallery items, swatches) stay almost square: see `tile` above and the
+      // gallery rules below.
+      '--border-radius-button-normal': t['radius-md'], '--border-radius-button-base': t['radius-sm'],
+      '--border-radius-button-toolbar': t['radius-sm'], '--border-radius-button-category': t['radius-md'],
+      '--border-radius-toolbar': t['radius-lg'], '--border-radius-form-control': t['radius-sm'],
+      '--border-radius-dropdown-menu': t['radius-md'], '--border-radius-dataview-item': tile,
+      '--border-radius-window': t['radius-lg'], '--border-radius-checkbox': 'min(' + (t['radius-sm'] || '4px') + ', 4px)',
       '--font-family-base': t['font-sans'], '--font-family-base-custom': t['font-sans'],
     };
     var decl = '';
@@ -222,7 +361,8 @@
       // YouCoded's tabs carry the file name and the save state, so the editor's title row goes.
       '#app-title { display: none !important; }' +
       // Onboarding tips pop over the document; YouCoded explains its own features.
-      '.tooltip.new-feature, .synch-tip, .asc-synchronizetip { display: none !important; }';
+      '.tooltip.new-feature, .synch-tip, .asc-synchronizetip { display: none !important; }' +
+      polishCss(t, { panel: panel, thumb: thumb, thumbHover: thumbHover, tile: tile, shadow: shadow, wallpaper: th.wallpaper });
     if (th.wallpaper) {
       css += 'html, body, #viewport, .layout-region, #editor_sdk, #id_main, #ws-canvas-outer, .ws-canvas-area { background-color: transparent !important; }' +
         '#toolbar .toolbar, #statusbar, .statusbar, #left-menu, #right-menu, .right-panel { background: ' + panel + ' !important;' +
@@ -232,6 +372,50 @@
       css += '#toolbar, #statusbar, .statusbar, #left-menu, #right-menu, .right-panel, .left-panel { display: none !important; }';
     }
     return css;
+  }
+
+  // ── Canvas colours reach the drawing code too (v0.1.7) ──
+  // WHY: the document and sheet canvases (their scrollbars, the sheet's row and column headers,
+  // the page outline) are drawn by sdkjs from colours it copies out of the CSS variables only
+  // when the editor starts or switches between its light and dark themes. A switch between two
+  // dark YouCoded themes (Midnight → Halftone) changed neither, so the canvases kept the old
+  // theme's colours. So each frame's editor is handed exactly these colours whenever they change
+  // (asc_setSkin with no name or type keeps the editor's own theme and only replaces them).
+  var SKIN_KEYS = [
+    'canvas-page-border', 'canvas-scroll-thumb', 'canvas-scroll-thumb-hover', 'canvas-scroll-thumb-pressed',
+    'canvas-scroll-thumb-border', 'canvas-scroll-thumb-border-hover', 'canvas-scroll-thumb-border-pressed',
+    'canvas-scroll-thumb-target', 'canvas-scroll-thumb-target-hover', 'canvas-scroll-thumb-target-pressed',
+    'canvas-scroll-arrow', 'canvas-scroll-arrow-hover', 'canvas-scroll-arrow-pressed',
+    'canvas-cell-title-background', 'canvas-cell-title-background-hover', 'canvas-cell-title-background-selected',
+    'canvas-cell-title-border', 'canvas-cell-title-border-hover', 'canvas-cell-title-border-selected', 'canvas-cell-title-text',
+  ];
+  function skinFor(th) {
+    var t = th.tokens, thumb = t['scrollbar-thumb'] || t.edge, hover = t['scrollbar-hover'] || t['fg-faint'] || t.edge;
+    var skin = {
+      'canvas-page-border': t.edge,
+      'canvas-scroll-thumb': thumb, 'canvas-scroll-thumb-hover': hover, 'canvas-scroll-thumb-pressed': hover,
+      'canvas-scroll-thumb-border': thumb, 'canvas-scroll-thumb-border-hover': hover, 'canvas-scroll-thumb-border-pressed': hover,
+      'canvas-scroll-thumb-target': thumb, 'canvas-scroll-thumb-target-hover': hover, 'canvas-scroll-thumb-target-pressed': hover,
+      'canvas-scroll-arrow': t['fg-muted'], 'canvas-scroll-arrow-hover': t.fg, 'canvas-scroll-arrow-pressed': t.fg,
+      'canvas-cell-title-background': t.panel, 'canvas-cell-title-background-hover': t.inset,
+      'canvas-cell-title-background-selected': t.edge, 'canvas-cell-title-border': t.edge,
+      'canvas-cell-title-border-hover': t.edge, 'canvas-cell-title-border-selected': t.edge,
+      'canvas-cell-title-text': t['fg-dim'] || t.fg,
+    };
+    // The track behind the thumb is the desk; a wallpaper theme's see-through desk has no colour
+    // to hand over, so the editor keeps its own there.
+    if (!th.wallpaper && t.canvas) skin['canvas-background'] = t.canvas;
+    var out = {};
+    SKIN_KEYS.concat(['canvas-background']).forEach(function (k) { if (skin[k]) out[k] = skin[k]; });
+    return out;
+  }
+  function pushSkin(win) {
+    var api;
+    try { api = (win.Asc && win.Asc.editor) || win.editor; } catch (e) { return; }
+    if (!api || typeof api.asc_setSkin !== 'function') return;
+    var skin = skinFor(latest), key = JSON.stringify(skin);
+    if (win.__ycSkin === key) return;
+    try { api.asc_setSkin(skin); win.__ycSkin = key; } catch (e) { /* editor still starting: next pass */ }
   }
 
   function applyTo(win) {
@@ -269,6 +453,7 @@
         if (!busy) window.parent.postMessage({ type: 'yc:office-esc' }, '*');
       }, true);
     }
+    pushSkin(win);
     var style = doc.getElementById(STYLE_ID);
     if (!style) { style = doc.createElement('style'); style.id = STYLE_ID; doc.head.appendChild(style); }
     var css = buildCss(latest);

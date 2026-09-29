@@ -15,7 +15,7 @@ async function patchedCopy() {
   await writeFile(path.join(dir, 'index.html'), '<html><head></head></html>');
   await writeFile(path.join(dir, 'bridge.js'), "var ASC_PROTO_BASE = _isWindows ? 'http://ascdesktop.localhost/' : 'ascdesktop://';\n");
   await writeFile(path.join(dir, 'editor-patches.js'),
-    "        editorConfig: {\n          mode: 'edit',\n          customization: {\n            about: false,\n            feedback: false\n          }\n        },\n");
+    "          permissions: {\n            edit: true,\n            download: true,\n            print: true\n          }\n        },\n        editorConfig: {\n          mode: 'edit',\n          customization: {\n            about: false,\n            feedback: false\n          }\n        },\n");
   const main = path.join(dir, 'web-apps', 'apps', 'documenteditor', 'main');
   await mkdir(main, { recursive: true });
   await writeFile(path.join(main, 'index.html'), '<html><head></head></html>');
@@ -31,5 +31,14 @@ test('the editor opens every document with macros turned off, so a document cann
   assert.match(custom, /macrosMode: 'disable',/);
   // Euro-Office's own settings are kept beside the new ones.
   assert.match(custom, /about: false,/);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('the File tab has no "Suggest a feature" and no printing (the host cannot print)', async () => {
+  const dir = await patchedCopy();
+  const js = await readFile(path.join(dir, 'editor-patches.js'), 'utf8');
+  assert.match(js, /suggestFeature: false,/);
+  assert.match(js, /print: false/);
+  assert.doesNotMatch(js, /print: true/);
   await rm(dir, { recursive: true, force: true });
 });
