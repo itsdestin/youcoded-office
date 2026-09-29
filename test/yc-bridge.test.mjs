@@ -102,3 +102,27 @@ test('no editor frame can veto the window unload: the host saves and asks the pe
   editor.EventTarget.prototype.addEventListener.call(other, 'beforeunload', () => {});
   assert.equal(other.listeners.beforeunload.length, 1, 'only the window itself is guarded');
 });
+
+// v0.1.6: CSP does not cover WebRTC. The host page shares the editor's origin (an editor frame
+// could reach parent.RTCPeerConnection), and the editor makes frames of its own later — both lose
+// peer connections too.
+test('neither the host page nor a frame the editor adds later can open a peer-to-peer connection', async () => {
+  const src = await readFile(path.resolve(import.meta.dirname, '..', 'bridge', 'yc-bridge.js'), 'utf8');
+  const later = fakeEditorWindow();
+  const ticks = [];
+  const top = fakeEditorWindow();
+  top.parent = {};
+  top.AscDesktopEditor = { LocalFileSave() {} };
+  top.document = { documentElement: {}, querySelectorAll: (q) => (q === 'iframe' ? [{ contentWindow: later, addEventListener() {} }] : []) };
+  const ctx = vm.createContext({
+    window: top, document: top.document, setInterval: (fn) => { ticks.push(fn); return 0; }, setTimeout: () => 0, clearTimeout() {},
+    requestAnimationFrame: () => 0, WeakSet, JSON, Object, String, MutationObserver: class { observe() {} },
+  });
+  vm.runInContext(src, ctx);
+  ticks.forEach((fn) => fn());
+  ticks.forEach((fn) => fn()); // a second walk over already-sealed frames must not throw
+  for (const w of [top, later]) {
+    assert.throws(() => new w.RTCPeerConnection(), /peer connections are turned off/);
+    assert.throws(() => new w.webkitRTCPeerConnection(), /peer connections are turned off/);
+  }
+});

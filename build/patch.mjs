@@ -1,4 +1,4 @@
-// Applies YouCoded's two changes to euro-office-lite's built editor folder.
+// Applies YouCoded's changes to euro-office-lite's built editor folder.
 // WHY at bundle time: the app then serves plain files; nothing is rewritten per request.
 import { readFile, writeFile, copyFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -34,6 +34,13 @@ for (const app of await readdir(apps)) {
   }
 }
 if (!pages) { console.error('patch: no editor pages found under web-apps/apps/*/main/'); process.exit(1); }
+// 4. No macros (v0.1.6). WHY: Euro-Office's defaults are macros: true, macrosMode: 'warn', so a
+//    document's own scripts could run after one click on the warning — scripts that could reach
+//    past the editor's other seals. YouCoded's editor has no use for them; turning both off also
+//    removes the warning itself.
+await replaceOnce('editor-patches.js',
+  "customization: {\n            about: false,",
+  "customization: {\n            macros: false,\n            macrosMode: 'disable',\n            about: false,");
 const here = path.dirname(new URL(import.meta.url).pathname);
 await copyFile(path.join(here, '..', 'bridge', 'tauri-relay.js'), path.join(dir, 'tauri-relay.js'));
 await copyFile(path.join(here, '..', 'bridge', 'yc-bridge.js'), path.join(dir, 'yc-bridge.js'));

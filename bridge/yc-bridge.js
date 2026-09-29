@@ -60,7 +60,21 @@
       }
     } catch (e) { /* not same-origin, or already sealed: nothing to guard here */ }
   }
+  // ── No peer-to-peer connections (v0.1.6) ──
+  // WHY: CSP does not cover WebRTC, so an RTCPeerConnection could send a document's text off the
+  // machine. yc-early.js removes it in each editor page before sdkjs runs; this covers the host
+  // page itself (same origin, so an editor frame could reach parent.RTCPeerConnection) and the
+  // blank frames the editor makes later, on the same walk that guards unload.
+  function blockPeers(win) {
+    var names = ['RTCPeerConnection', 'webkitRTCPeerConnection'];
+    for (var i = 0; i < names.length; i++) {
+      var stub = function () { throw new Error('YouCoded Office: peer connections are turned off'); };
+      try { Object.defineProperty(win, names[i], { value: stub, writable: false, configurable: false, enumerable: false }); }
+      catch (e) { /* already sealed, or not same-origin */ }
+    }
+  }
   function guardAll(win) {
+    blockPeers(win);
     guardUnload(win);
     quietEditor(win);
     var frames;
@@ -145,6 +159,7 @@
     } catch (e) { /* not same-origin or not an editor frame */ }
   }
 
+  blockPeers(window);
   guardUnload(window);
   var latest = null;   // last theme posted by the host
   var slim = false;
@@ -265,6 +280,7 @@
   }
 
   function walk(win) {
+    blockPeers(win);
     guardUnload(win);
     quietEditor(win);
     if (latest) applyTo(win);

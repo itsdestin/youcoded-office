@@ -24,8 +24,24 @@
  * sdkjs publishes both as `window.AscCommon = window.AscCommon || {}; AscCommon.baseEditorsApi = e`
  * (and the same for AscCommonExcel.WorkbookView), after the prototype is complete — so a setter
  * on each name sees the finished class.
+ *
+ * It also takes away peer-to-peer connections (v0.1.6). WHY: the page's CSP stops fetches and
+ * sockets off the document's own origin, but Chromium does not apply CSP to WebRTC — an
+ * RTCPeerConnection could still send a document's text to another machine. The editor works
+ * offline and never needs one, so each constructor throws, and cannot be put back.
  */
 (function () {
+  function blockPeers(win) {
+    var names = ['RTCPeerConnection', 'webkitRTCPeerConnection'];
+    for (var i = 0; i < names.length; i++) {
+      var name = names[i];
+      var stub = function () { throw new Error('YouCoded Office: peer connections are turned off'); };
+      try { Object.defineProperty(win, name, { value: stub, writable: false, configurable: false, enumerable: false }); }
+      catch (e) { /* already sealed */ }
+    }
+  }
+  blockPeers(window);
+
   function onDefine(owner, name, patch) {
     var value = owner[name];
     if (value) { try { patch(value); } catch (e) { /* keep the editor running */ } }

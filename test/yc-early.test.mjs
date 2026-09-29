@@ -47,3 +47,16 @@ test('a namespace replaced by a new object is patched too', async () => {
   a.AscCommon = { baseEditorsApi: Api };
   assert.equal(new Api().onNeedUpdateExternalReferenceOnOpen(), undefined);
 });
+
+// v0.1.6: CSP does not cover WebRTC, so the editor page must not be able to open a peer
+// connection — and a script must not be able to put the real one back.
+test('an editor page cannot open a peer-to-peer connection, or restore one', async () => {
+  const a = await editorPage();
+  for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection']) {
+    assert.throws(() => new a[name]({ iceServers: [] }), /peer connections are turned off/);
+    // A strict-mode page gets a TypeError here; a sloppy one is silently ignored. Either way:
+    try { a[name] = function Real() {}; } catch { /* read-only */ }
+    assert.throws(() => new a[name](), /peer connections are turned off/, `${name} stays blocked after reassignment`);
+    assert.equal(Reflect.deleteProperty(a, name), false);
+  }
+});
