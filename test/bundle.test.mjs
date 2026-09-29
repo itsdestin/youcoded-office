@@ -1,6 +1,6 @@
-import { test } from 'node:test';
+import { test as nodeTest } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, stat, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { readFile, readdir, stat, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import os from 'node:os';
@@ -8,6 +8,25 @@ import path from 'node:path';
 
 const B = path.resolve(import.meta.dirname, '..', 'work', 'bundle');
 const run = promisify(execFile);
+
+// WHY a freshness gate (v0.1.10): these tests read work/bundle, which only build/build-linux.sh
+// makes. A local clone keeps whatever bundle it last built, so after any change to bridge/ or
+// build/ they failed on old files and hid real results. Locally they now skip, saying why, when
+// the bundle is missing or older than those sources; CI builds the bundle first and sets CI, and
+// there they always run.
+async function staleReason() {
+  if (process.env.CI) return null;
+  const built = await stat(path.join(B, 'manifest.json')).catch(() => null);
+  if (!built) return 'no local bundle — run build/build-linux.sh (CI always runs these)';
+  const root = path.resolve(import.meta.dirname, '..');
+  let newest = (await stat(path.join(root, 'PIN.json'))).mtimeMs;
+  for (const dir of ['bridge', 'build']) {
+    for (const f of await readdir(path.join(root, dir))) newest = Math.max(newest, (await stat(path.join(root, dir, f))).mtimeMs);
+  }
+  return newest > built.mtimeMs ? 'local bundle is older than bridge/, build/ or PIN.json — run build/build-linux.sh (CI always runs these)' : null;
+}
+const skip = await staleReason();
+const test = (name, fn) => nodeTest(name, skip ? { skip } : {}, fn);
 
 test('index.html loads the relay, then the theme bridge, then bridge.js', async () => {
   const html = await readFile(path.join(B, 'editors', 'index.html'), 'utf8');

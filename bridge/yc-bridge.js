@@ -84,34 +84,51 @@
   // pictures) and answers its bare media name. sdkjs then resolves that name through
   // LocalFileGetImageUrl, as for a picture chosen in the file dialog. No picture → [] and sdkjs
   // pastes the drop's text instead.
-  var dropped = null;
+  var dropped = null, dropWin = null;
   function watchDrops(win) {
     try {
       if (!win || win.__ycDropWatch || !win.addEventListener) return;
       win.__ycDropWatch = true;
-      win.addEventListener('drop', function (e) { dropped = e.dataTransfer ? e.dataTransfer.files : null; }, true);
+      win.addEventListener('drop', function (e) { dropped = e.dataTransfer ? e.dataTransfer.files : null; dropWin = win; }, true);
     } catch (e) { /* not same-origin */ }
   }
+  function uploadPicture(f) {
+    try {
+      var x = new XMLHttpRequest();
+      x.open('POST', location.origin + '/upload/drop', false); // sdkjs asks synchronously
+      x.setRequestHeader('Content-Type', f.type);
+      x.send(f);
+      if (x.status !== 200) return null;
+      var key = Object.keys(JSON.parse(x.responseText))[0] || '';
+      return key ? key.replace(/^media\//, '') : null;
+    } catch (e) { return null; }
+  }
+  // WHY every picture, in two steps (fix round 1): sdkjs's drop handler inserts only the first
+  // picture GetDropFiles names (its loop stops there). So the first goes back to sdkjs as usual,
+  // and the rest are inserted just after, through the same frame's editor — the same
+  // _addImageUrl call sdkjs itself makes, with the addresses its own getImageUrl gives.
   function droppedPictures() {
-    var files = dropped || [];
-    dropped = null;
+    var files = dropped || [], win = dropWin;
+    dropped = null; dropWin = null;
+    var names = [];
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
       if (!f || !/^image\//.test(f.type || '')) continue;
-      try {
-        var x = new XMLHttpRequest();
-        x.open('POST', location.origin + '/upload/drop', false); // sdkjs asks synchronously
-        x.setRequestHeader('Content-Type', f.type);
-        x.send(f);
-        if (x.status !== 200) return [];
-        var key = Object.keys(JSON.parse(x.responseText))[0] || '';
-        return key ? [key.replace(/^media\//, '')] : [];
-      } catch (e) { return []; }
+      var name = uploadPicture(f);
+      if (name) names.push(name);
     }
-    return [];
+    if (names.length > 1 && win) {
+      var rest = names.slice(1);
+      setTimeout(function () {
+        try {
+          var api = (win.Asc && win.Asc.editor) || win.editor;
+          var urls = win.AscCommon.g_oDocumentUrls;
+          api._addImageUrl(rest.map(function (n) { return urls.getImageUrl(n); }));
+        } catch (e) { /* the editor went away */ }
+      }, 0);
+    }
+    return names.slice(0, 1);
   }
-  // WHY every frame's: the editor frame holds its own AscDesktopEditor object, not the host
-  // page's (measured in the dev window), and sdkjs's drop handler reads the one of its frame.
   function extendDesktopEditor(win) {
     var d;
     try { d = win.AscDesktopEditor; } catch (e) { return; }
