@@ -197,7 +197,9 @@
   }
   // WHY a MutationObserver per editor document (fix round 2): the 150 ms pass alone left the hidden
   // dialog's mask over the editor for up to that long, eating clicks. The observer answers it the
-  // moment it is added or shown, before the next paint.
+  // moment it is added or shown, before the next paint. WHY this narrow (fix round 3): the editor
+  // restyles its canvas cursor and rulers constantly; only windows being added (the body's
+  // children) and a window's own style/class (how it is shown) matter here.
   function watchTxtOptions(win) {
     var doc;
     try { doc = win.document; } catch (e) { return; }
@@ -205,7 +207,19 @@
     var MO = win.MutationObserver || (typeof MutationObserver !== 'undefined' ? MutationObserver : null);
     if (!MO) return;
     doc.__ycTxtWatch = true;
-    new MO(function () { acceptTxtOptions(win); }).observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+    var shown = new MO(function () { acceptTxtOptions(win); });
+    var existing = doc.querySelectorAll('.asc-window');
+    for (var k = 0; k < existing.length; k++) shown.observe(existing[k], { attributes: true, attributeFilter: ['style', 'class'] });
+    new MO(function (records) {
+      for (var i = 0; i < records.length; i++) {
+        var added = records[i].addedNodes || [];
+        for (var j = 0; j < added.length; j++) {
+          var n = added[j];
+          if (n && n.classList && n.classList.contains('asc-window')) shown.observe(n, { attributes: true, attributeFilter: ['style', 'class'] });
+        }
+      }
+      acceptTxtOptions(win);
+    }).observe(doc.body, { childList: true });
   }
   function guardAll(win) {
     extendDesktopEditor(win);
@@ -423,13 +437,18 @@
       // editor (main answers only picture dialogs) are hidden, not left to do nothing. Word: Insert
       // → Text from file; Collaboration → Compare and Combine (a second document); Mail merge
       // (recipients from a spreadsheet). Spreadsheet: Data → Get data (TXT/CSV, XML) and External
-      // links (Change source opens another workbook). Presentation: Insert → Audio / Video (the
+      // links' Change source, Open source and Update values (fix round 3, checked in the dev window
+      // on a workbook linked to another: Change source asks for another workbook — the same dialog
+      // chart settings → Edit links opens in Word and PowerPoint; Open source asks a document
+      // server to open it and window.open is denied; Update values ends in "Error: updating is
+      // failed". Break links works — it removes the link and the file saves — so it and the
+      // dialog stay). Presentation: Insert → Audio / Video (the
       // host does not offer media, so the editor never builds them; hidden in case a build does).
       // Every editor: the hyperlink dialog's "Select file" button. Each goes with its separator.
       '#slot-btn-text-from-file, #slot-btn-mailrecepients, #id-right-menu-mail-merge, #slot-btn-insaudio, #slot-btn-insvideo,' +
       ' .group:has(> #slot-btn-compare), .group:has(> #slot-btn-compare) + .separator,' +
       ' .group:has(> #slot-btn-data-from-text), .group:has(> #slot-btn-data-from-text) + .separator,' +
-      ' .group:has(> #slot-btn-data-external-links), .group:has(> #slot-btn-data-external-links) + .separator,' +
+      ' #external-links-btn-change, #external-links-btn-open, #external-links-btn-update,' +
       ' #id-dlg-hyperlink-url .select-button { display: none' + I + '; }' +
       // Opaque, even over a wallpaper: the File tab covers the document, and a see-through
       // panel showed the page's text through its list and settings (Meadow Mist, 2026-09-28).

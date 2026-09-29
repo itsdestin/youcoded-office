@@ -244,8 +244,11 @@ test('file features the host cannot serve are hidden, with the TXT dialog\'s mas
   const css = cssOf(head);
   for (const sel of ['#slot-btn-text-from-file', '#slot-btn-mailrecepients', '#id-right-menu-mail-merge', '#slot-btn-insaudio', '#slot-btn-insvideo',
     '.group:has(> #slot-btn-compare)', '.group:has(> #slot-btn-compare) + .separator', '.group:has(> #slot-btn-data-from-text)',
-    '.group:has(> #slot-btn-data-external-links)', '#id-dlg-hyperlink-url .select-button']) {
+    '#external-links-btn-change', '#external-links-btn-open', '#external-links-btn-update', '#id-dlg-hyperlink-url .select-button']) {
     assert.ok(css.includes(sel), `${sel} is hidden`);
   }
+  // Fix round 3: the External links group itself stays, with Break links (which works).
+  assert.ok(!css.includes('#slot-btn-data-external-links'), 'External links stays');
+  assert.ok(!css.includes('#external-links-btn-delete'), 'Break links stays');
   assert.match(css, /\.modals-mask \{ visibility: hidden !important; pointer-events: none !important; \}/);
 });

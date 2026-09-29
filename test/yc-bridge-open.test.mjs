@@ -26,12 +26,12 @@ async function load(opts = {}) {
   const txt = dialog(['id-codepages-combo']);
   const csv = dialog(['id-codepages-combo', 'id-delimiters-combo']);
   let shown = true;
-  const editorDoc = { body: {}, querySelectorAll: (q) => (q === '.asc-window.open-dlg' ? [txt, csv] : []), addEventListener() {} };
+  const editorDoc = { body: {}, querySelectorAll: (q) => (q === '.asc-window.open-dlg' || q === '.asc-window' ? [txt, csv] : []), addEventListener() {} };
   const editorWin = {
     location: 'office://t/web-apps/apps/documenteditor/main/index.html', document: editorDoc,
     addEventListener: (t, cb, cap) => { if (t === 'keydown') keyListeners.push({ win: 'editor', cb, cap }); },
     getComputedStyle: () => ({ display: shown ? 'block' : 'none' }),
-    MutationObserver: class { constructor(cb) { this.cb = cb; observers.push(this); } observe(target, opts) { this.target = target; this.opts = opts; } },
+    MutationObserver: class { constructor(cb) { this.cb = cb; this.targets = []; observers.push(this); } observe(target, opts) { this.targets.push(target); this.opts = opts; } },
   };
   editorDoc.defaultView = editorWin;
   const win = {
@@ -77,17 +77,24 @@ test('Word\'s TXT encoding dialog is answered OK and never shown; the CSV one st
   assert.equal(csv.style.visibility, undefined);
 });
 
-// Fix round 2: answered the moment it is SHOWN (an observer on the editor's body), never before —
-// OK on a dialog not yet shown would let its show() put it and its mask up for good.
+// Fix round 2: answered the moment it is SHOWN, never before — OK on a dialog not yet shown would
+// let its show() put it and its mask up for good. Fix round 3: the observers watch only the body's
+// children (a window added) and each window's own style/class (shown), not the whole page.
 test("the TXT dialog is answered by an observer only once it is shown", async () => {
   const { clicked, observers, show, txt } = await load({ hiddenAtFirst: true });
-  assert.equal(observers.length, 1);
-  assert.deepEqual(JSON.parse(JSON.stringify(observers[0].opts.attributeFilter)), ['style', 'class']);
+  assert.equal(observers.length, 2);
+  const [shownObs, bodyObs] = observers;
+  assert.deepEqual(JSON.parse(JSON.stringify(bodyObs.opts)), { childList: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(shownObs.opts)), { attributes: true, attributeFilter: ['style', 'class'] });
   assert.deepEqual(clicked, []);
   assert.equal(txt.style.visibility, 'hidden');
+  // A window added to the body is watched for being shown.
+  const win2 = { classList: { contains: (c) => c === 'asc-window' } };
+  bodyObs.cb([{ addedNodes: [win2, { classList: { contains: () => false } }] }]);
+  assert.equal(shownObs.targets.includes(win2), true);
   show();
-  observers[0].cb();
+  shownObs.cb([]);
   assert.deepEqual(clicked, ['id-codepages-combo']);
-  observers[0].cb();
+  shownObs.cb([]);
   assert.deepEqual(clicked, ['id-codepages-combo'], 'answered once');
 });
