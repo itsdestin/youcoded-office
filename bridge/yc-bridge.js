@@ -128,8 +128,10 @@
       // called by the word, cell and slide APIs at open), so that call does nothing here, and
       // WorkbookView.prototype.initExternalReferenceUpdateTimer (cell/view/WorkbookView.js,
       // which re-fetches every link 30 s after open when the workbook's own setting says
-      // "always") does nothing either. The cached values stored in the file stay as they are;
-      // Data > External links still updates them when the person asks.
+      // "always") does nothing either. The cached values stored in the file stay as they are.
+      // Data > External links still OFFERS an update, but it cannot reach outside (no network
+      // under the CSP). v0.1.5: yc-early.js does this first, inside the editor page; this later
+      // walk is only a second line for a page that was not patched.
       var base = win.AscCommon && win.AscCommon.baseEditorsApi;
       if (base && base.prototype && !base.prototype.__ycQuiet) {
         base.prototype.__ycQuiet = true;

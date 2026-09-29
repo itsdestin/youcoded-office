@@ -23,6 +23,23 @@ test('index.html loads the relay, then the theme bridge, then bridge.js', async 
   assert.ok(bridgeMatch.index > yc, 'bridge.js after yc-bridge');
 });
 
+test('every editor page runs yc-early.js before any of its own scripts', async () => {
+  const { readdir } = await import('node:fs/promises');
+  const apps = path.join(B, 'editors', 'web-apps', 'apps');
+  let pages = 0;
+  for (const app of await readdir(apps)) {
+    const main = path.join(apps, app, 'main');
+    for (const f of (await readdir(main).catch(() => [])).filter((n) => /^index.*\.html$/.test(n))) {
+      const html = await readFile(path.join(main, f), 'utf8');
+      const early = html.indexOf('<script src="../../../../yc-early.js"></script>');
+      assert.ok(early > 0 && early === html.indexOf('<script'), `${app}/${f}: yc-early.js is the first script`);
+      pages++;
+    }
+  }
+  assert.ok(pages >= 3, 'the document, spreadsheet and presentation pages');
+  await stat(path.join(B, 'editors', 'yc-early.js'));
+});
+
 test('bridge.js serves media from the document origin', async () => {
   const js = await readFile(path.join(B, 'editors', 'bridge.js'), 'utf8');
   assert.match(js, /var ASC_PROTO_BASE = location\.origin \+ '\/asc\/';/);
