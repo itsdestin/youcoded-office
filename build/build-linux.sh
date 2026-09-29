@@ -40,6 +40,12 @@ V="${TAG#v}"
 mkdir -p "$WORK/deb" && cd "$WORK/deb" && ar x "$DEB" && tar xf data.tar.*
 cp -r "$WORK/deb/usr/lib/Euro-Office-Lite/binaries" "$OUT/converter"
 cp -r "$WORK/deb/usr/lib/Euro-Office-Lite/templates" "$OUT/templates"
+# WHY (v0.1.12, PDF export): x2t draws a PDF with the editors' sdkjs/common/Native/native.js
+# (converter/DoctRenderer.config). The editors built from source above carry a newer native.js
+# than this release's x2t understands — it ends NativeOpenFileData with Api.getJsApi() — and x2t
+# crashed (SIGSEGV) on every PDF. The release's own editors carry the matching one; the browser
+# editors never load this file, so only x2t sees the swap.
+cp "$WORK/deb/usr/lib/Euro-Office-Lite/editors/sdkjs/common/Native/native.js" "$OUT/editors/sdkjs/common/Native/native.js"
 
 # 3. YouCoded's patches, licence, notices, manifest.
 node "$ROOT/build/patch.mjs" "$OUT/editors"

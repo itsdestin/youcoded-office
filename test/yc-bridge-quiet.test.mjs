@@ -154,15 +154,18 @@ test('the File tab hides what cannot work in YouCoded and keeps what does', asyn
   post({ type: 'yc:office-theme', theme: theme() });
   tick();
   const hidden = hiddenIds(cssOf(head));
-  // The start screen opens and creates; the tab closes; the host refuses the save dialog,
-  // save_file_as, print_document and remove_note_separator; YouCoded has its own Versions;
+  // The start screen opens and creates; the tab closes; the host refuses print_document and
+  // remove_note_separator; "Save copy" needs a document server; YouCoded has its own Versions;
   // the rest needs a document server or the internet.
-  for (const id of ['fm-btn-local-open', 'fm-btn-recent', 'fm-btn-create', 'fm-btn-exit', 'fm-btn-download',
-    'fm-btn-save-desktop', 'fm-btn-save-copy', 'fm-btn-export-pdf', 'fm-btn-print', 'fm-btn-print-with-preview',
+  for (const id of ['fm-btn-local-open', 'fm-btn-recent', 'fm-btn-create', 'fm-btn-exit',
+    'fm-btn-save-copy', 'fm-btn-print', 'fm-btn-print-with-preview',
     'fm-btn-eo-note-separator', 'fm-btn-history', 'fm-btn-rights', 'fm-btn-help', 'fm-btn-suggest']) {
     assert.ok(hidden.has(id), `${id} is hidden`);
   }
-  for (const id of ['fm-btn-return', 'fm-btn-save', 'fm-btn-info', 'fm-btn-settings']) {
+  // v0.1.12: Save As, Download as (Export) and Export to PDF work now (the host answers
+  // dialog.save and save_file_as), so they are back.
+  for (const id of ['fm-btn-return', 'fm-btn-save', 'fm-btn-info', 'fm-btn-settings',
+    'fm-btn-download', 'fm-btn-save-desktop', 'fm-btn-export-pdf']) {
     assert.ok(!hidden.has(id), `${id} stays`);
   }
 });

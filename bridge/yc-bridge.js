@@ -253,17 +253,19 @@
 
   // ── The File tab (backstage): only what works inside YouCoded (v0.1.7) ──
   // WHY each is hidden (audited in all three editors, 2026-09-28): Open / Open Recent / Create
-  // new — the Office start screen does these; Close / Exit — the document's tab does it; Export
-  // ("Download as"), Save As, Save copy, Export to PDF and Print — each ends in a call YouCoded's
-  // host refuses (a save dialog, save_file_as, print_document), so they failed silently; "Note
-  // lines" (remove_note_separator) — refused the same way; Version history — YouCoded has its own
-  // Versions; Access rights, Help, Suggest a feature — they need a document server or the
-  // internet. Print and Suggest are also switched off in the editor's own config (build/patch.mjs);
-  // this list is the second line, and covers the ones no config reaches. Kept: Back, Save (the
-  // same save Ctrl+S and autosave make), Info (Document info) and Advanced settings.
+  // new — the Office start screen does these; Close / Exit — the document's tab does it; Print —
+  // it ends in print_document, which YouCoded's host refuses, so it failed silently; "Save copy"
+  // — it needs a document server's save-as address; "Note lines" (remove_note_separator) —
+  // refused like Print; Version history — YouCoded has its own Versions; Access rights, Help,
+  // Suggest a feature — they need a document server or the internet. Print and Suggest are also
+  // switched off in the editor's own config (build/patch.mjs); this list is the second line, and
+  // covers the ones no config reaches. Kept: Back, Save (the same save Ctrl+S and autosave make),
+  // Save As, Download as and Export to PDF (v0.1.12: the host answers dialog.save and
+  // save_file_as — each writes a separate file, the document stays on its own), Info (Document
+  // info) and Advanced settings.
   var HIDDEN_FILE_ITEMS = [
     'fm-btn-local-open', 'fm-btn-recent', 'fm-btn-create', 'fm-btn-exit', 'fm-btn-back',
-    'fm-btn-download', 'fm-btn-save-desktop', 'fm-btn-save-copy', 'fm-btn-export-pdf',
+    'fm-btn-save-copy',
     'fm-btn-print', 'fm-btn-print-with-preview', 'fm-btn-eo-note-separator',
     'fm-btn-history', 'fm-btn-rights', 'fm-btn-help', 'fm-btn-suggest', 'fm-btn-rename',
   ];

@@ -40,6 +40,15 @@
         o = o || {};
         return invoke('open_dialog', { multiple: !!o.multiple, filters: Array.isArray(o.filters) ? o.filters : [] });
       },
+      // WHY (v0.1.12, Save As / Download as / Export to PDF): bridge.js's LocalFileSave asks this
+      // where the file goes, then hands the answer to save_file_as. The host shows its own save
+      // dialog and answers a handle ending in the chosen name — never a folder — or null when
+      // cancelled. Only the filters go across; a defaultPath from the frame is not a folder the
+      // host would ever start in.
+      save: function (o) {
+        o = o || {};
+        return invoke('save_dialog', { filters: Array.isArray(o.filters) ? o.filters : [] });
+      },
     },
     window: { getCurrentWindow: function () { return { setTitle: function () { return Promise.resolve(); }, close: function () { return Promise.resolve(); }, onCloseRequested: function () { return Promise.resolve(function () {}); } }; } },
   };

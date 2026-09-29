@@ -1,6 +1,6 @@
 import { test as nodeTest } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, readdir, stat, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { readFile, readdir, stat, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import os from 'node:os';
@@ -94,5 +94,43 @@ test('x2t round-trips a docx through Editor.bin', async () => {
   await job(path.join(import.meta.dirname, 'fixtures', 'memo.docx'), bin, 8192);
   await job(bin, back, 65);
   assert.ok((await stat(back)).size > 1000);
+  await rm(tmp, { recursive: true, force: true });
+});
+
+// v0.1.12 (PDF export). WHY (measured 2026-09-29): the editors' native.js is built from a newer
+// sdkjs than the release's x2t, and ends NativeOpenFileData with Api.getJsApi(), which crashed x2t's
+// PDF renderer (SIGSEGV, no file). The build takes the release's own native.js instead.
+test('x2t\'s PDF renderer gets the release\'s own native.js', async () => {
+  const js = await readFile(path.join(B, 'editors', 'sdkjs', 'common', 'Native', 'native.js'), 'utf8');
+  assert.doesNotMatch(js, /Api\s*=\s*Api\.getJsApi\(\)/);
+  assert.match(js, /function NativeOpenFileData/);
+});
+
+test('x2t writes a PDF with its text drawn, using font data it makes itself', async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), 'yco-pdf-'));
+  const conv = path.join(B, 'converter');
+  const env = { ...process.env, LD_LIBRARY_PATH: conv };
+  const fonts = path.join(tmp, 'fontdata');
+  await mkdir(fonts);
+  await run(path.join(conv, 'x2t'), ['-create-allfonts', fonts, path.join(conv, 'fonts')], { cwd: conv, env, timeout: 60000 });
+  const job = async (from, to, fmt, allFonts) => {
+    const jt = await mkdtemp(path.join(tmp, 'job-'));
+    const xml = `<?xml version="1.0" encoding="utf-8"?><TaskQueueDataConvert><m_sFileFrom>${from}</m_sFileFrom><m_sFileTo>${to}</m_sFileTo><m_nFormatTo>${fmt}</m_nFormatTo><m_sTempDir>${jt}</m_sTempDir><m_sFontDir>${conv}/fonts</m_sFontDir><m_sAllFontsPath>${allFonts}</m_sAllFontsPath></TaskQueueDataConvert>`;
+    const p = path.join(tmp, `p-${fmt}.xml`); await writeFile(p, xml);
+    await run(path.join(conv, 'x2t'), [p], { cwd: conv, env, timeout: 60000 });
+  };
+  const bin = path.join(tmp, 'Editor.bin'), pdf = path.join(tmp, 'out.pdf');
+  await job(path.join(import.meta.dirname, 'fixtures', 'memo.docx'), bin, 8192, `${conv}/AllFonts.js`);
+  await job(bin, pdf, 513, path.join(fonts, 'AllFonts.js'));
+  const bytes = await readFile(pdf);
+  assert.equal(bytes.subarray(0, 5).toString('latin1'), '%PDF-');
+  // Every character drawn as glyph 0 is a blank page: at least one real glyph must be there.
+  const { inflateSync } = await import('node:zlib');
+  let real = 0;
+  for (const m of bytes.toString('latin1').matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)) {
+    let t; try { t = inflateSync(Buffer.from(m[1], 'latin1')).toString('latin1'); } catch { continue; }
+    for (const g of t.matchAll(/<([0-9A-Fa-f]{4})>/g)) if (g[1] !== '0000') real++;
+  }
+  assert.ok(real > 0, 'the PDF draws real glyphs');
   await rm(tmp, { recursive: true, force: true });
 });

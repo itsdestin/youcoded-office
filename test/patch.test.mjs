@@ -13,7 +13,8 @@ const run = promisify(execFile);
 async function patchedCopy() {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'yco-patch-'));
   await writeFile(path.join(dir, 'index.html'), '<html><head></head></html>');
-  await writeFile(path.join(dir, 'bridge.js'), "var ASC_PROTO_BASE = _isWindows ? 'http://ascdesktop.localhost/' : 'ascdesktop://';\n");
+  await writeFile(path.join(dir, 'bridge.js'), "var ASC_PROTO_BASE = _isWindows ? 'http://ascdesktop.localhost/' : 'ascdesktop://';\n" +
+    "            invoke('save_file_as', { path: savePath });\n            if (pathExt !== 'pdf') {\n              invoke('set_window_title', {});\n            }\n");
   await writeFile(path.join(dir, 'editor-patches.js'),
     "          permissions: {\n            edit: true,\n            download: true,\n            print: true\n          }\n        },\n        editorConfig: {\n          mode: 'edit',\n          customization: {\n            about: false,\n            feedback: false\n          }\n        },\n");
   const main = path.join(dir, 'web-apps', 'apps', 'documenteditor', 'main');
@@ -40,5 +41,15 @@ test('the File tab has no "Suggest a feature" and no printing (the host cannot p
   assert.match(js, /suggestFeature: false,/);
   assert.match(js, /print: false/);
   assert.doesNotMatch(js, /print: true/);
+  await rm(dir, { recursive: true, force: true });
+});
+
+// v0.1.12: YouCoded's Save As writes a copy and the document stays on its own file, so the editor
+// must not retitle itself (or move its recovery) to the copy's name afterwards.
+test('after a Save As the editor keeps its own name (the copy is a separate file)', async () => {
+  const dir = await patchedCopy();
+  const js = await readFile(path.join(dir, 'bridge.js'), 'utf8');
+  assert.doesNotMatch(js, /\n\s*if \(pathExt !== 'pdf'\) \{/);
+  assert.match(js, /if \(false && pathExt !== 'pdf'\) \{/);
   await rm(dir, { recursive: true, force: true });
 });

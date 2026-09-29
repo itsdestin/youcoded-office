@@ -38,3 +38,25 @@ test('dialog.open with no options asks for one file, and a cancel answers null',
   answer(posted[0].id, null);
   assert.equal(await pending, null);
 });
+
+// v0.1.12 (Save As / Export / PDF): bridge.js's LocalFileSave asks dialog.save for where the file
+// goes, then hands the answer to save_file_as. The host shows its own dialog and answers a handle
+// (never a folder) that ends in the chosen name; only the filters go across.
+test('dialog.save asks the host for a save dialog with the editor\'s filters and hands back its answer', async () => {
+  const { tauri, posted, answer } = await relayPage();
+  const filters = [{ name: 'PDF', extensions: ['pdf'] }];
+  const pending = tauri.dialog.save({ filters, defaultPath: '/somewhere/else.pdf' });
+  assert.equal(posted.length, 1);
+  assert.equal(posted[0].cmd, 'save_dialog');
+  assert.deepEqual(JSON.parse(JSON.stringify(posted[0].args)), { filters });
+  answer(posted[0].id, 'yc-save/abc/Report.pdf');
+  assert.equal(await pending, 'yc-save/abc/Report.pdf');
+});
+
+test('dialog.save with no options sends no filters, and a cancel answers null', async () => {
+  const { tauri, posted, answer } = await relayPage();
+  const pending = tauri.dialog.save();
+  assert.deepEqual(JSON.parse(JSON.stringify(posted[0].args.filters)), []);
+  answer(posted[0].id, null);
+  assert.equal(await pending, null);
+});

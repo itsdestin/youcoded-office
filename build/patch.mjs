@@ -50,6 +50,11 @@ await replaceOnce('editor-patches.js',
   "macrosMode: 'disable',\n",
   "macrosMode: 'disable',\n            suggestFeature: false,\n");
 await replaceOnce('editor-patches.js', 'print: true', 'print: false');
+// 6. Save As writes a copy (v0.1.12). WHY: YouCoded's host translates the document into the
+//    chosen file and leaves the open document on its own file — like "Save a copy", so autosave
+//    keeps writing where the person opened it. bridge.js would then retitle the editor to the
+//    copy's name and move its recovery there, both describing a move that did not happen.
+await replaceOnce('bridge.js', "if (pathExt !== 'pdf') {", "if (false && pathExt !== 'pdf') {");
 const here = path.dirname(new URL(import.meta.url).pathname);
 await copyFile(path.join(here, '..', 'bridge', 'tauri-relay.js'), path.join(dir, 'tauri-relay.js'));
 await copyFile(path.join(here, '..', 'bridge', 'yc-bridge.js'), path.join(dir, 'yc-bridge.js'));
