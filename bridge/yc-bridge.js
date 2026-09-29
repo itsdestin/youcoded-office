@@ -448,8 +448,13 @@
       '#slot-btn-text-from-file, #slot-btn-mailrecepients, #id-right-menu-mail-merge, #slot-btn-insaudio, #slot-btn-insvideo,' +
       ' .group:has(> #slot-btn-compare), .group:has(> #slot-btn-compare) + .separator,' +
       ' .group:has(> #slot-btn-data-from-text), .group:has(> #slot-btn-data-from-text) + .separator,' +
-      ' #external-links-btn-change, #external-links-btn-open, #external-links-btn-update,' +
+      ' #external-links-btn-change, #external-links-btn-open, #external-links-btn-update, #chart-button-update-data,' +
       ' #id-dlg-hyperlink-url .select-button { display: none' + I + '; }' +
+      // Fix round 4: Word/PowerPoint chart settings — "Update data" (#chart-button-update-data,
+      // hidden above) takes the same failing update path as the dialog's Update values; the linked
+      // source's name stays readable, but as plain text: its link opens the source through a
+      // document server this host doesn't have.
+      '#chart-open-external-link { pointer-events: none' + I + '; cursor: default' + I + '; color: inherit' + I + '; text-decoration: none' + I + '; border-bottom: none' + I + '; }' +
       // Opaque, even over a wallpaper: the File tab covers the document, and a see-through
       // panel showed the page's text through its list and settings (Meadow Mist, 2026-09-28).
       '#file-menu-panel .panel-menu { background-color: ' + t.panel + I + '; border-right: 1px solid ' + t.edge + I + '; padding: 12px 8px 16px' + I + '; }' +
