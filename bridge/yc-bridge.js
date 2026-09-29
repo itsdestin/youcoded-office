@@ -107,6 +107,14 @@
   // picture GetDropFiles names (its loop stops there). So the first goes back to sdkjs as usual,
   // and the rest are inserted just after, through the same frame's editor — the same
   // _addImageUrl call sdkjs itself makes, with the addresses its own getImageUrl gives.
+  // The editor's own log line (bridge.js's _eoLog → js_log → the app's log; main keeps lines
+  // that say "failed").
+  function logLine(msg) {
+    try {
+      if (window._eoLog) window._eoLog(msg);
+      else if (window.__TAURI__) window.__TAURI__.core.invoke('js_log', { msg: msg });
+    } catch (e) { /* nowhere left to say it */ }
+  }
   function droppedPictures() {
     var files = dropped || [], win = dropWin;
     dropped = null; dropWin = null;
@@ -120,11 +128,17 @@
     if (names.length > 1 && win) {
       var rest = names.slice(1);
       setTimeout(function () {
+        // WHY checked and logged (fix round 2): these are sdkjs internals; if a build renames them,
+        // the extra pictures must show up in the app's log as not inserted, not vanish silently.
+        var why = null;
         try {
           var api = (win.Asc && win.Asc.editor) || win.editor;
-          var urls = win.AscCommon.g_oDocumentUrls;
-          api._addImageUrl(rest.map(function (n) { return urls.getImageUrl(n); }));
-        } catch (e) { /* the editor went away */ }
+          var urls = win.AscCommon && win.AscCommon.g_oDocumentUrls;
+          if (!api || typeof api._addImageUrl !== 'function') why = 'no _addImageUrl';
+          else if (!urls || typeof urls.getImageUrl !== 'function') why = 'no getImageUrl';
+          else api._addImageUrl(rest.map(function (n) { return urls.getImageUrl(n); }));
+        } catch (e) { why = String((e && e.message) || e); }
+        if (why) logLine('[YC] drop: inserting ' + rest.length + ' more dropped picture(s) failed: ' + why);
       }, 0);
     }
     return names.slice(0, 1);

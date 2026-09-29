@@ -9,7 +9,7 @@ import vm from 'node:vm';
 // drop threw and the editor showed "An error occurred"). yc-bridge.js answers instead: it sends
 // the dropped picture's BYTES to the document's own origin (upload/), and hands sdkjs the bare
 // media name, which sdkjs then resolves through LocalFileGetImageUrl like a dialog pick.
-async function loadBridge({ frameDesktop = false, status = 200, answer = { 'media/picture-1.png': 'office://t/asc/docmedia/media/picture-1.png' } } = {}) {
+async function loadBridge({ frameDesktop = false, editorApi = true, status = 200, answer = { 'media/picture-1.png': 'office://t/asc/docmedia/media/picture-1.png' } } = {}) {
   const src = await readFile(path.resolve(import.meta.dirname, '..', 'bridge', 'yc-bridge.js'), 'utf8');
   const sent = [];
   class XMLHttpRequest {
@@ -25,7 +25,8 @@ async function loadBridge({ frameDesktop = false, status = 200, answer = { 'medi
     added: [],
     AscCommon: { g_oDocumentUrls: { getImageUrl: (n) => 'office://t/asc/docmedia/media/' + n } },
   };
-  editorWin.Asc = { editor: { _addImageUrl: (urls) => editorWin.added.push(urls) } };
+  editorWin.Asc = editorApi ? { editor: { _addImageUrl: (urls) => editorWin.added.push(urls) } } : {};
+  const logged = [];
   editorWin.document = { defaultView: editorWin, querySelectorAll: () => [], querySelector: () => null };
   const ticks = [];
   const later = [];
@@ -33,6 +34,7 @@ async function loadBridge({ frameDesktop = false, status = 200, answer = { 'medi
     parent: {},
     location: { origin: 'office://t' },
     AscDesktopEditor: {},
+    _eoLog: (m) => logged.push(m),
     addEventListener: () => {},
     document: { documentElement: {}, querySelectorAll: (q) => (q === 'iframe' ? [{ contentWindow: editorWin, addEventListener() {} }] : []) },
   };
@@ -44,7 +46,7 @@ async function loadBridge({ frameDesktop = false, status = 200, answer = { 'medi
   vm.runInContext(src, ctx);
   ticks.forEach((t) => t()); // the timers, among them the walk that reaches the editor frames
   const drop = (files) => dropListeners.forEach((l) => l.cb({ dataTransfer: { files } }));
-  return { desktop: win.AscDesktopEditor, frameDesktop: editorWin.AscDesktopEditor, dropListeners, drop, sent, editorWin, runLater: () => later.splice(0).forEach((f) => f()) };
+  return { desktop: win.AscDesktopEditor, frameDesktop: editorWin.AscDesktopEditor, dropListeners, drop, sent, editorWin, logged, runLater: () => later.splice(0).forEach((f) => f()) };
 }
 
 const file = (name, type) => ({ name, type, size: 3 });
@@ -97,4 +99,14 @@ test('every dropped picture goes into the document, not only the first', async (
   // ... and the others are inserted right after, through the same editor, in drop order
   b.runLater();
   assert.deepEqual(b.editorWin.added.map((u) => [...u]), [['office://t/asc/docmedia/media/picture-2.png', 'office://t/asc/docmedia/media/picture-3.png']]);
+});
+
+test('a dropped picture that cannot be inserted is logged, not silently lost', async () => {
+  const b = await loadBridge({ editorApi: false, answer: (n) => ({ ['media/picture-' + n + '.png']: 'x' }) });
+  b.drop([file('a.png', 'image/png'), file('b.png', 'image/png')]);
+  assert.deepEqual([...b.desktop.GetDropFiles()], ['picture-1.png']);
+  b.runLater();
+  assert.equal(b.logged.length, 1);
+  assert.match(b.logged[0], /failed/);
+  assert.match(b.logged[0], /1 more dropped picture/);
 });
