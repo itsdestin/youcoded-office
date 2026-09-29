@@ -7,7 +7,7 @@ import vm from 'node:vm';
 // v0.1.14 (Task 2 fix round 1): Ctrl+O and the editor's own Open do nothing (files open from the
 // Office start screen; the editor's Open reloaded the document and dropped unsaved edits), and
 // Word's TXT encoding dialog — a choice x2t ignores — is answered OK without being shown.
-async function load() {
+async function load(opts = {}) {
   const src = await readFile(path.resolve(import.meta.dirname, '..', 'bridge', 'yc-bridge.js'), 'utf8');
   const intervals = [];
   const opened = [];
@@ -22,10 +22,17 @@ async function load() {
     } };
     return w;
   };
+  const observers = [];
   const txt = dialog(['id-codepages-combo']);
   const csv = dialog(['id-codepages-combo', 'id-delimiters-combo']);
-  const editorDoc = { querySelectorAll: (q) => (q === '.asc-window.open-dlg' ? [txt, csv] : []), addEventListener() {} };
-  const editorWin = { location: 'office://t/web-apps/apps/documenteditor/main/index.html', document: editorDoc, addEventListener: (t, cb, cap) => { if (t === 'keydown') keyListeners.push({ win: 'editor', cb, cap }); } };
+  let shown = true;
+  const editorDoc = { body: {}, querySelectorAll: (q) => (q === '.asc-window.open-dlg' ? [txt, csv] : []), addEventListener() {} };
+  const editorWin = {
+    location: 'office://t/web-apps/apps/documenteditor/main/index.html', document: editorDoc,
+    addEventListener: (t, cb, cap) => { if (t === 'keydown') keyListeners.push({ win: 'editor', cb, cap }); },
+    getComputedStyle: () => ({ display: shown ? 'block' : 'none' }),
+    MutationObserver: class { constructor(cb) { this.cb = cb; observers.push(this); } observe(target, opts) { this.target = target; this.opts = opts; } },
+  };
   editorDoc.defaultView = editorWin;
   const win = {
     parent: { postMessage() {} },
@@ -39,8 +46,9 @@ async function load() {
     requestAnimationFrame: () => 0, WeakSet, JSON, MutationObserver: class { observe() {} }, getComputedStyle: () => ({}),
   });
   vm.runInContext(src, ctx);
+  if (opts.hiddenAtFirst) shown = false;
   intervals.forEach((fn) => { try { fn(); } catch { /* other passes need more of a page */ } });
-  return { win, opened, keyListeners, clicked, txt, csv };
+  return { win, opened, keyListeners, clicked, txt, csv, observers, show: () => { shown = true; } };
 }
 
 test('Ctrl+O is swallowed in every editor window before the editor sees it', async () => {
@@ -67,4 +75,19 @@ test('Word\'s TXT encoding dialog is answered OK and never shown; the CSV one st
   assert.deepEqual(clicked, ['id-codepages-combo']);
   assert.equal(txt.style.visibility, 'hidden');
   assert.equal(csv.style.visibility, undefined);
+});
+
+// Fix round 2: answered the moment it is SHOWN (an observer on the editor's body), never before —
+// OK on a dialog not yet shown would let its show() put it and its mask up for good.
+test("the TXT dialog is answered by an observer only once it is shown", async () => {
+  const { clicked, observers, show, txt } = await load({ hiddenAtFirst: true });
+  assert.equal(observers.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(observers[0].opts.attributeFilter)), ['style', 'class']);
+  assert.deepEqual(clicked, []);
+  assert.equal(txt.style.visibility, 'hidden');
+  show();
+  observers[0].cb();
+  assert.deepEqual(clicked, ['id-codepages-combo']);
+  observers[0].cb();
+  assert.deepEqual(clicked, ['id-codepages-combo'], 'answered once');
 });

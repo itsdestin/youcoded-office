@@ -62,7 +62,15 @@ test('after a Save As the editor keeps its own name (the copy is a separate file
 test('Save As sends the editor\'s export choices with save_file_as', async () => {
   const dir = await patchedCopy();
   const bridge = await readFile(path.join(dir, 'bridge.js'), 'utf8');
-  assert.match(bridge, /invoke\('save_file_as', \{ path: savePath, json: jsonOptions \|\| '', text: window\.__ycTextOptions \|\| null \}\)/);
+  // Sent once and cleared in the same step (fix round 2), run here against a stand-in window.
+  const m = /invoke\('save_file_as', (\(function \(\) \{[\s\S]*?\}\)\(\))\)/.exec(bridge);
+  assert.ok(m, 'save_file_as sends the choices');
+  const window = { __ycTextOptions: { codePage: 44, delimiter: [2] } };
+  const args = new Function('window', 'savePath', 'jsonOptions', 'return ' + m[1])(window, 'yc-save/x/a.csv', '{"a":1}');
+  assert.deepEqual(args, { path: 'yc-save/x/a.csv', json: '{"a":1}', text: { codePage: 44, delimiter: [2] } });
+  assert.equal(window.__ycTextOptions, null, 'a later Save As does not reuse them');
+  const again = new Function('window', 'savePath', 'jsonOptions', 'return ' + m[1])(window, 'yc-save/x/b.csv', undefined);
+  assert.deepEqual(again, { path: 'yc-save/x/b.csv', json: '', text: null });
   const patches = await readFile(path.join(dir, 'editor-patches.js'), 'utf8');
   assert.match(patches, /window\.__ycTextOptions = null;/);
   assert.match(patches, /asc_getCodePage/);

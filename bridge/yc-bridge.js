@@ -184,16 +184,33 @@
     for (var i = 0; i < dlgs.length; i++) {
       var w = dlgs[i];
       if (w.__ycAccepted || !w.querySelector('#id-codepages-combo') || w.querySelector('#id-delimiters-combo')) continue;
-      var ok = w.querySelector('[result="ok"]');
-      if (!ok) continue;
-      w.__ycAccepted = true;
       if (w.style) w.style.visibility = 'hidden';
+      // WHY only once it is shown (fix round 2): OK on a dialog not yet shown would close it
+      // before its show() — which would then put it (and its click-blocking mask) up for good.
+      var shown;
+      try { shown = (win.getComputedStyle || getComputedStyle)(w).display !== 'none'; } catch (e) { shown = true; }
+      var ok = w.querySelector('[result="ok"]');
+      if (!ok || !shown) continue;
+      w.__ycAccepted = true;
       ok.click();
     }
+  }
+  // WHY a MutationObserver per editor document (fix round 2): the 150 ms pass alone left the hidden
+  // dialog's mask over the editor for up to that long, eating clicks. The observer answers it the
+  // moment it is added or shown, before the next paint.
+  function watchTxtOptions(win) {
+    var doc;
+    try { doc = win.document; } catch (e) { return; }
+    if (!doc || !doc.body || doc.__ycTxtWatch) return;
+    var MO = win.MutationObserver || (typeof MutationObserver !== 'undefined' ? MutationObserver : null);
+    if (!MO) return;
+    doc.__ycTxtWatch = true;
+    new MO(function () { acceptTxtOptions(win); }).observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
   }
   function guardAll(win) {
     extendDesktopEditor(win);
     noEditorOpen(win);
+    watchTxtOptions(win);
     acceptTxtOptions(win);
     watchDrops(win);
     blockPeers(win);
@@ -400,6 +417,20 @@
       // v0.1.14: Word's TXT encoding dialog is answered for the person (acceptTxtOptions says why);
       // hidden from its first frame so it never flashes. The CSV one has a delimiter and stays.
       '.asc-window.open-dlg:has(#id-codepages-combo):not(:has(#id-delimiters-combo)) { visibility: hidden' + I + '; }' +
+      // ...and its mask never blocks a click while it is up (fix round 2).
+      'body:has(.asc-window.open-dlg #id-codepages-combo):not(:has(.asc-window.open-dlg #id-delimiters-combo)) .modals-mask { visibility: hidden' + I + '; pointer-events: none' + I + '; }' +
+      // v0.1.15 (fix round 2): features that open a file of a kind YouCoded's host never hands the
+      // editor (main answers only picture dialogs) are hidden, not left to do nothing. Word: Insert
+      // → Text from file; Collaboration → Compare and Combine (a second document); Mail merge
+      // (recipients from a spreadsheet). Spreadsheet: Data → Get data (TXT/CSV, XML) and External
+      // links (Change source opens another workbook). Presentation: Insert → Audio / Video (the
+      // host does not offer media, so the editor never builds them; hidden in case a build does).
+      // Every editor: the hyperlink dialog's "Select file" button. Each goes with its separator.
+      '#slot-btn-text-from-file, #slot-btn-mailrecepients, #id-right-menu-mail-merge, #slot-btn-insaudio, #slot-btn-insvideo,' +
+      ' .group:has(> #slot-btn-compare), .group:has(> #slot-btn-compare) + .separator,' +
+      ' .group:has(> #slot-btn-data-from-text), .group:has(> #slot-btn-data-from-text) + .separator,' +
+      ' .group:has(> #slot-btn-data-external-links), .group:has(> #slot-btn-data-external-links) + .separator,' +
+      ' #id-dlg-hyperlink-url .select-button { display: none' + I + '; }' +
       // Opaque, even over a wallpaper: the File tab covers the document, and a see-through
       // panel showed the page's text through its list and settings (Meadow Mist, 2026-09-28).
       '#file-menu-panel .panel-menu { background-color: ' + t.panel + I + '; border-right: 1px solid ' + t.edge + I + '; padding: 12px 8px 16px' + I + '; }' +

@@ -234,3 +234,18 @@ test('the panel blur never sits on a panel itself, only on a layer behind it', a
   }
   assert.match(css, /#right-menu::before/);
 });
+
+// v0.1.15 (fix round 2): features that open a non-picture file are hidden with their separators,
+// and the hidden TXT dialog's mask never takes a click.
+test('file features the host cannot serve are hidden, with the TXT dialog\'s mask', async () => {
+  const { post, tick, head } = await load();
+  post({ type: 'yc:office-theme', theme: theme() });
+  tick();
+  const css = cssOf(head);
+  for (const sel of ['#slot-btn-text-from-file', '#slot-btn-mailrecepients', '#id-right-menu-mail-merge', '#slot-btn-insaudio', '#slot-btn-insvideo',
+    '.group:has(> #slot-btn-compare)', '.group:has(> #slot-btn-compare) + .separator', '.group:has(> #slot-btn-data-from-text)',
+    '.group:has(> #slot-btn-data-external-links)', '#id-dlg-hyperlink-url .select-button']) {
+    assert.ok(css.includes(sel), `${sel} is hidden`);
+  }
+  assert.match(css, /\.modals-mask \{ visibility: hidden !important; pointer-events: none !important; \}/);
+});

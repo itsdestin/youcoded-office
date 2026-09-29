@@ -66,8 +66,10 @@ await replaceOnce('editor-patches.js',
   "                  if (options && options.advancedOptions &&\n                      typeof options.advancedOptions.asc_getNativeOptions !== 'function') {\n" +
   "                    try { var yto = options.advancedOptions; window.__ycTextOptions = { codePage: yto.asc_getCodePage(), delimiter: yto.asc_getDelimiter(), delimiterChar: yto.asc_getDelimiterChar() }; } catch (e) { window.__ycTextOptions = null; }\n" +
   "                    options.advancedOptions = undefined;");
+// WHY taken and cleared in one step (fix round 2): the choices belong to this one Save As; a later
+// one that never went through the TXT/CSV dialog (Ctrl+Shift+S, Save As) must not reuse them.
 await replaceOnce('bridge.js', "invoke('save_file_as', { path: savePath })",
-  "invoke('save_file_as', { path: savePath, json: jsonOptions || '', text: window.__ycTextOptions || null })");
+  "invoke('save_file_as', (function () { var t = window.__ycTextOptions || null; window.__ycTextOptions = null; return { path: savePath, json: jsonOptions || '', text: t }; })())");
 const here = path.dirname(new URL(import.meta.url).pathname);
 await copyFile(path.join(here, '..', 'bridge', 'tauri-relay.js'), path.join(dir, 'tauri-relay.js'));
 await copyFile(path.join(here, '..', 'bridge', 'yc-bridge.js'), path.join(dir, 'yc-bridge.js'));
