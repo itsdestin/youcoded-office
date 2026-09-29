@@ -109,8 +109,10 @@ test('no editor frame can veto the window unload: the host saves and asks the pe
     assert.equal(ev.returnValue, '', 'nor through returnValue');
   }
   // Other events are untouched.
+  // (v0.1.14: the bridge's own Ctrl+O guard is one keydown listener already there.)
+  const keys = (editor.listeners.keydown || []).length;
   editor.addEventListener('keydown', () => {});
-  assert.equal(editor.listeners.keydown.length, 1);
+  assert.equal(editor.listeners.keydown.length, keys + 1);
   const other = { listeners: {} };
   editor.EventTarget.prototype.addEventListener.call(other, 'beforeunload', () => {});
   assert.equal(other.listeners.beforeunload.length, 1, 'only the window itself is guarded');

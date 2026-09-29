@@ -14,9 +14,10 @@ async function patchedCopy() {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'yco-patch-'));
   await writeFile(path.join(dir, 'index.html'), '<html><head></head></html>');
   await writeFile(path.join(dir, 'bridge.js'), "var ASC_PROTO_BASE = _isWindows ? 'http://ascdesktop.localhost/' : 'ascdesktop://';\n" +
-    "            invoke('save_file_as', { path: savePath });\n            if (pathExt !== 'pdf') {\n              invoke('set_window_title', {});\n            }\n");
+    "            await invoke('save_file_as', { path: savePath });\n            if (pathExt !== 'pdf') {\n              invoke('set_window_title', {});\n            }\n");
   await writeFile(path.join(dir, 'editor-patches.js'),
-    "          permissions: {\n            edit: true,\n            download: true,\n            print: true\n          }\n        },\n        editorConfig: {\n          mode: 'edit',\n          customization: {\n            about: false,\n            feedback: false\n          }\n        },\n");
+    "          permissions: {\n            edit: true,\n            download: true,\n            print: true\n          }\n        },\n        editorConfig: {\n          mode: 'edit',\n          customization: {\n            about: false,\n            feedback: false\n          }\n        },\n" +
+    "                  if (options && options.advancedOptions &&\n                      typeof options.advancedOptions.asc_getNativeOptions !== 'function') {\n                    options.advancedOptions = undefined;\n                  }\n");
   const main = path.join(dir, 'web-apps', 'apps', 'documenteditor', 'main');
   await mkdir(main, { recursive: true });
   await writeFile(path.join(main, 'index.html'), '<html><head></head></html>');
@@ -51,5 +52,21 @@ test('after a Save As the editor keeps its own name (the copy is a separate file
   const js = await readFile(path.join(dir, 'bridge.js'), 'utf8');
   assert.doesNotMatch(js, /\n\s*if \(pathExt !== 'pdf'\) \{/);
   assert.match(js, /if \(false && pathExt !== 'pdf'\) \{/);
+  await rm(dir, { recursive: true, force: true });
+});
+
+// v0.1.14 (Task 2 fix round 1): the editor's export choices reach the host. A CSV's encoding and
+// delimiter live in the dialog's text options, which editor-patches.js drops (sdkjs's desktop save
+// path cannot take them); they are kept aside first. bridge.js then sends them, and its save
+// options (a spreadsheet PDF's print range), with save_file_as.
+test('Save As sends the editor\'s export choices with save_file_as', async () => {
+  const dir = await patchedCopy();
+  const bridge = await readFile(path.join(dir, 'bridge.js'), 'utf8');
+  assert.match(bridge, /invoke\('save_file_as', \{ path: savePath, json: jsonOptions \|\| '', text: window\.__ycTextOptions \|\| null \}\)/);
+  const patches = await readFile(path.join(dir, 'editor-patches.js'), 'utf8');
+  assert.match(patches, /window\.__ycTextOptions = null;/);
+  assert.match(patches, /asc_getCodePage/);
+  const kept = patches.indexOf('window.__ycTextOptions = {');
+  assert.ok(kept > 0 && kept < patches.indexOf('options.advancedOptions = undefined;'), 'kept aside before they are dropped');
   await rm(dir, { recursive: true, force: true });
 });

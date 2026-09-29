@@ -40,6 +40,19 @@ LICENSE
 NOTICE
 ```
 
+## Export and PDF
+
+Save As, Export and Export to PDF write a separate file through the host (YouCoded), which runs
+the bundled `x2t`. Two things to know:
+
+- **PDFs use the computer's installed fonts.** A PDF is drawn from real font files, and the host
+  has `x2t -create-allfonts` list them once per run — the bundled fonts plus every font installed
+  on the computer. A PDF can therefore look slightly different from the editor (which shows only
+  the bundled and theme fonts) when a document names a font installed locally.
+- **Which export choices are honoured.** A CSV's encoding and delimiter, and a spreadsheet PDF's
+  page settings and print range, reach `x2t`. A TXT's encoding does not (`x2t` always writes
+  UTF-8), so Word's TXT encoding dialog is answered for the person and never shown.
+
 ## Building
 
 Linux x64 only, for now:

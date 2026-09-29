@@ -55,6 +55,19 @@ await replaceOnce('editor-patches.js', 'print: true', 'print: false');
 //    keeps writing where the person opened it. bridge.js would then retitle the editor to the
 //    copy's name and move its recovery there, both describing a move that did not happen.
 await replaceOnce('bridge.js', "if (pathExt !== 'pdf') {", "if (false && pathExt !== 'pdf') {");
+// 7. The editor's export choices reach the host (v0.1.14, Task 2 fix round 1). WHY: a CSV's
+//    encoding and delimiter are in the TXT/CSV dialog's text options, which editor-patches.js drops
+//    before sdkjs's desktop save path (it cannot take them) — so they are kept aside first. bridge.js
+//    then sends them, and its save options (a spreadsheet PDF's print range), with save_file_as.
+//    The host checks every value before x2t sees it.
+await replaceOnce('editor-patches.js',
+  "                  if (options && options.advancedOptions &&\n                      typeof options.advancedOptions.asc_getNativeOptions !== 'function') {\n                    options.advancedOptions = undefined;",
+  "                  window.__ycTextOptions = null;\n" +
+  "                  if (options && options.advancedOptions &&\n                      typeof options.advancedOptions.asc_getNativeOptions !== 'function') {\n" +
+  "                    try { var yto = options.advancedOptions; window.__ycTextOptions = { codePage: yto.asc_getCodePage(), delimiter: yto.asc_getDelimiter(), delimiterChar: yto.asc_getDelimiterChar() }; } catch (e) { window.__ycTextOptions = null; }\n" +
+  "                    options.advancedOptions = undefined;");
+await replaceOnce('bridge.js', "invoke('save_file_as', { path: savePath })",
+  "invoke('save_file_as', { path: savePath, json: jsonOptions || '', text: window.__ycTextOptions || null })");
 const here = path.dirname(new URL(import.meta.url).pathname);
 await copyFile(path.join(here, '..', 'bridge', 'tauri-relay.js'), path.join(dir, 'tauri-relay.js'));
 await copyFile(path.join(here, '..', 'bridge', 'yc-bridge.js'), path.join(dir, 'yc-bridge.js'));

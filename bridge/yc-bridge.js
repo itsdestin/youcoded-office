@@ -150,8 +150,51 @@
     d.GetDropFiles = droppedPictures;
     d.IsImageFile = function (name) { return /\.(png|jpe?g|gif|bmp|svg|webp|ico)$/i.test(String(name || '')); };
   }
+  // ── The editor's own Open (v0.1.14, Task 2 fix round 1) ──
+  // WHY: Ctrl+O (editor-patches.js, twice) and the editor's Open call LocalFileOpen, which asks for
+  // a document in a dialog and then reloads the editor — dropping unsaved edits. Files open from
+  // YouCoded's Office start screen; the host never opens files through this (its "open-file" event
+  // goes straight to open_file). So Ctrl+O is swallowed in every editor window before the editor's
+  // own handlers (capture, on the window), and LocalFileOpen does nothing. main refuses a document
+  // dialog too (open_dialog answers only picture requests).
+  function isCtrlO(e) { return (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'o' || e.key === 'O'); }
+  function noEditorOpen(win) {
+    try {
+      if (win && !win.__ycNoOpenKeys && win.addEventListener) {
+        win.__ycNoOpenKeys = true;
+        win.addEventListener('keydown', function (e) { if (isCtrlO(e)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+      }
+    } catch (e) { /* not same-origin */ }
+    var d;
+    try { d = win.AscDesktopEditor; } catch (e) { return; }
+    if (!d || d.__ycNoOpen) return;
+    d.__ycNoOpen = true;
+    d.LocalFileOpen = function () { logLine('[YC] the editor\'s own Open is not used; files open from the Office start screen'); return Promise.resolve(); };
+  }
+  // ── A TXT's encoding (v0.1.14, Task 2 fix round 1) ──
+  // WHY: Word's Export → TXT asks for an encoding, but x2t writes TXT as UTF-8 whatever it is told
+  // (measured 2026-09-29: windows-1252, UTF-16 and ISO-8859-1 all came out UTF-8). A choice that is
+  // ignored is never shown: the dialog (encoding only — the CSV one also has a delimiter, which x2t
+  // honours, and stays) is hidden by CSS and answered OK here, so the export simply goes ahead.
+  function acceptTxtOptions(win) {
+    var doc;
+    try { doc = win.document; } catch (e) { return; }
+    if (!doc || !doc.querySelectorAll) return;
+    var dlgs = doc.querySelectorAll('.asc-window.open-dlg');
+    for (var i = 0; i < dlgs.length; i++) {
+      var w = dlgs[i];
+      if (w.__ycAccepted || !w.querySelector('#id-codepages-combo') || w.querySelector('#id-delimiters-combo')) continue;
+      var ok = w.querySelector('[result="ok"]');
+      if (!ok) continue;
+      w.__ycAccepted = true;
+      if (w.style) w.style.visibility = 'hidden';
+      ok.click();
+    }
+  }
   function guardAll(win) {
     extendDesktopEditor(win);
+    noEditorOpen(win);
+    acceptTxtOptions(win);
     watchDrops(win);
     blockPeers(win);
     guardUnload(win);
@@ -354,6 +397,9 @@
       // "Interface theme" row goes — YouCoded sets the editor's theme from the app's own on every
       // pass, so a pick there snapped straight back.
       '#file-menu-panel tr.themes, #file-menu-panel tr:has(#fms-cmb-theme) { display: none' + I + '; }' +
+      // v0.1.14: Word's TXT encoding dialog is answered for the person (acceptTxtOptions says why);
+      // hidden from its first frame so it never flashes. The CSV one has a delimiter and stays.
+      '.asc-window.open-dlg:has(#id-codepages-combo):not(:has(#id-delimiters-combo)) { visibility: hidden' + I + '; }' +
       // Opaque, even over a wallpaper: the File tab covers the document, and a see-through
       // panel showed the page's text through its list and settings (Meadow Mist, 2026-09-28).
       '#file-menu-panel .panel-menu { background-color: ' + t.panel + I + '; border-right: 1px solid ' + t.edge + I + '; padding: 12px 8px 16px' + I + '; }' +
