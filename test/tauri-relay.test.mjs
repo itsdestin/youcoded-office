@@ -60,3 +60,11 @@ test('dialog.save with no options sends no filters, and a cancel answers null', 
   answer(posted[0].id, null);
   assert.equal(await pending, null);
 });
+
+test('the print panel\'s printer list is answered here, never asked of the host', async () => {
+  const { tauri, posted } = await relayPage();
+  const list = JSON.parse(await tauri.core.invoke('plugin:printer|get_printers'));
+  assert.equal(list.length, 1);
+  assert.equal(list[0].name, 'YouCoded');
+  assert.equal(posted.length, 0);
+});

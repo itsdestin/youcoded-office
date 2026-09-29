@@ -14,6 +14,11 @@
     if (d.yc === 'event') (listeners[d.name] || []).forEach(function (cb) { cb({ event: d.name, payload: d.payload }); });
   });
   function invoke(cmd, args) {
+    // WHY answered here (v0.1.18, Print): the editor's print panel waits for a printer list before
+    // its Print button works. The host prints through the operating system's dialog, which lists
+    // the real printers, so the panel gets one stand-in entry (its row is hidden — yc-bridge.js
+    // printCss) and nothing is asked of the host.
+    if (cmd === 'plugin:printer|get_printers') return Promise.resolve(JSON.stringify([{ name: 'YouCoded', is_default: true }]));
     return new Promise(function (resolve, reject) {
       var id = ++seq; pending[id] = { resolve: resolve, reject: reject };
       window.parent.postMessage({ yc: 'rpc', id: id, cmd: cmd, args: args || {} }, '*');

@@ -154,18 +154,18 @@ test('the File tab hides what cannot work in YouCoded and keeps what does', asyn
   post({ type: 'yc:office-theme', theme: theme() });
   tick();
   const hidden = hiddenIds(cssOf(head));
-  // The start screen opens and creates; the tab closes; the host refuses print_document and
-  // remove_note_separator; "Save copy" needs a document server; YouCoded has its own Versions;
-  // the rest needs a document server or the internet.
+  // The start screen opens and creates; the tab closes; the host refuses remove_note_separator;
+  // "Save copy" needs a document server; YouCoded has its own Versions; the rest needs a document
+  // server or the internet.
   for (const id of ['fm-btn-local-open', 'fm-btn-recent', 'fm-btn-create', 'fm-btn-exit',
-    'fm-btn-save-copy', 'fm-btn-print', 'fm-btn-print-with-preview',
+    'fm-btn-save-copy',
     'fm-btn-eo-note-separator', 'fm-btn-history', 'fm-btn-rights', 'fm-btn-help', 'fm-btn-suggest']) {
     assert.ok(hidden.has(id), `${id} is hidden`);
   }
   // v0.1.12: Save As, Download as (Export) and Export to PDF work now (the host answers
-  // dialog.save and save_file_as), so they are back.
+  // dialog.save and save_file_as), so they are back. v0.1.18: so is Print (print_document).
   for (const id of ['fm-btn-return', 'fm-btn-save', 'fm-btn-info', 'fm-btn-settings',
-    'fm-btn-download', 'fm-btn-save-desktop', 'fm-btn-export-pdf']) {
+    'fm-btn-download', 'fm-btn-save-desktop', 'fm-btn-export-pdf', 'fm-btn-print', 'fm-btn-print-with-preview']) {
     assert.ok(!hidden.has(id), `${id} stays`);
   }
 });
@@ -253,4 +253,53 @@ test('file features the host cannot serve are hidden, with the TXT dialog\'s mas
   // Fix round 4: a chart's linked source name stays, as text that cannot be clicked.
   assert.match(css, /#chart-open-external-link \{ pointer-events: none !important; cursor: default !important; color: inherit !important; text-decoration: none !important; border-bottom: none !important; \}/);
   assert.match(css, /\.modals-mask \{ visibility: hidden !important; pointer-events: none !important; \}/);
+});
+
+// v0.1.18 (Print): the host prints through the operating system's dialog. The editor's print panel
+// keeps its preview, page setup and page choice, and loses what that dialog owns.
+test('the print panel loses the rows the system print dialog owns, and "selection" printing', async () => {
+  const { post, tick, head } = await load();
+  post({ type: 'yc:office-theme', theme: theme() });
+  tick();
+  const css = cssOf(head);
+  const rule = /([^{}]*#print-combo-printer[^{}]*)\{ display: none !important; \}/.exec(css);
+  assert.ok(rule, 'one rule hides them');
+  const sel = rule[1];
+  for (const part of ['tr:has(#print-combo-printer)', 'tr:has(+ tr #print-combo-printer)', 'tr:has(#print-combo-color-printing)',
+    'tr:has(> td > #print-combo-sides)', '#print-txt-copies', 'tr:has(#print-btn-system-dialog)',
+    '#print-combo-range li[data-value="2"]', '.dropdown-menu li:has(> a .menu__icon.btn-print)', '#slot-btn-dt-print-quick']) {
+    assert.ok(sel.includes(part), `hides ${part}`);
+  }
+  // What stays: the range, pages, page setup, and the Print and Print to PDF buttons.
+  for (const id of ['#print-combo-range,', '#print-txt-pages', '#print-combo-pages', '#print-combo-orient', '#print-combo-margins', '#print-btn-print', '#print-btn-print-pdf']) {
+    assert.ok(!sel.split(',').some((s) => s.trim() === id.replace(',', '') || s.trim().endsWith(' ' + id.replace(',', ''))), `${id} stays`);
+  }
+});
+
+test('the print panel gets one stand-in printer, once, so its Print button works', async () => {
+  const { tick, editorWin } = await load();
+  const calls = [];
+  editorWin.DE = { getController: (n) => (n === 'Print' ? { setPrintersInfo: (cur, list) => calls.push([cur, list]) } : null) };
+  tick();
+  tick();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 'YouCoded');
+  assert.equal(calls[0][1][0].name, 'YouCoded');
+});
+
+test('Print sends a document\'s own options, and a workbook\'s panel choices once', async () => {
+  const { tick } = await load();
+  tick();
+  const src = await readFile(BRIDGE, 'utf8');
+  const win = { AscDesktopEditor: { _currentDocType: 'word' } };
+  vm.runInContext(src, vm.createContext({ window: Object.assign(win, { parent: {}, location: {}, addEventListener() {}, document: { querySelectorAll: () => [] } }), document: { querySelectorAll: () => [] }, setInterval: () => 0, setTimeout: () => 0, clearTimeout() {}, requestAnimationFrame: () => 0, WeakSet, JSON, Object, MutationObserver: class { observe() {} } }));
+  assert.equal(win.__ycPrintJson({}, '{"nativeOptions":{"pages":"2"}}'), '{"nativeOptions":{"pages":"2"}}');
+  assert.equal(win.__ycPrintJson({}, undefined), '');
+  win.AscDesktopEditor._currentDocType = 'cell';
+  const ad = { asc_getPrintType: () => 0, asc_getStartPageIndex: () => 1, asc_getEndPageIndex: () => null, asc_getActiveSheetsArray: () => [0], asc_getIgnorePrintArea: () => true };
+  const ew = { AscDesktopEditor_PrintOptions: { advancedOptions: ad } };
+  assert.deepEqual(JSON.parse(win.__ycPrintJson(ew, '{"nativeOptions":{}}')), { adjustOptions: { printType: 0, startPageIndex: 1, endPageIndex: null, activeSheetsArray: [0] }, spreadsheetLayout: { ignorePrintArea: true } });
+  // Used up: Ctrl+P (no panel) prints the whole workbook, never the last panel's choices.
+  assert.equal(ew.AscDesktopEditor_PrintOptions, null);
+  assert.deepEqual(JSON.parse(win.__ycPrintJson(ew, '')), { adjustOptions: { printType: 1 }, spreadsheetLayout: { ignorePrintArea: false } });
 });

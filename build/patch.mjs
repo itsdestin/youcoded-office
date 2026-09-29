@@ -41,15 +41,11 @@ if (!pages) { console.error('patch: no editor pages found under web-apps/apps/*/
 await replaceOnce('editor-patches.js',
   "customization: {\n            about: false,",
   "customization: {\n            macros: false,\n            macrosMode: 'disable',\n            about: false,");
-// 5. File tab (v0.1.7): no "Suggest a feature" (it opens a web page) and no printing. WHY print:
-//    printing ends in bridge.js's print_document, a command YouCoded's host refuses, so Print (the
-//    File tab item, its toolbar button and Ctrl+P) failed silently. Switching it off in the
-//    editor's own config removes all three; yc-bridge.js hides the File tab items no config
-//    reaches (see HIDDEN_FILE_ITEMS there).
+// 5. File tab (v0.1.7): no "Suggest a feature" (it opens a web page). Printing was switched off
+//    here too until v0.1.18, when YouCoded's host learned print_document (step 8).
 await replaceOnce('editor-patches.js',
   "macrosMode: 'disable',\n",
   "macrosMode: 'disable',\n            suggestFeature: false,\n");
-await replaceOnce('editor-patches.js', 'print: true', 'print: false');
 // 6. Save As writes a copy (v0.1.12). WHY: YouCoded's host translates the document into the
 //    chosen file and leaves the open document on its own file — like "Save a copy", so autosave
 //    keeps writing where the person opened it. bridge.js would then retitle the editor to the
@@ -70,6 +66,46 @@ await replaceOnce('editor-patches.js',
 // one that never went through the TXT/CSV dialog (Ctrl+Shift+S, Save As) must not reuse them.
 await replaceOnce('bridge.js', "invoke('save_file_as', { path: savePath })",
   "invoke('save_file_as', (function () { var t = window.__ycTextOptions || null; window.__ycTextOptions = null; return { path: savePath, json: jsonOptions || '', text: t }; })())");
+// 8. Print (v0.1.18, finish plan Task 3). WHY: YouCoded's host answers print_document by making a
+//    PDF of the document and showing the operating system's print dialog for it — or, when that
+//    dialog can't be shown, by saying why and offering the PDF as a file. So Print sends only the
+//    print panel's choices (a page list; a workbook's sheets, pages and print area), and neither
+//    bridge.js's printer plugin nor its PDF viewer (both Tauri's, refused by the host). WHY
+//    _isPrinting ends before the host is asked: the dialog can stay open for minutes, and
+//    LocalFileSave drops every save while it is set — autosave must keep working meanwhile. WHY no
+//    DesktopOfflineAppDocumentEndSave: printing never started a save, and ending one moves the
+//    editor's "saved" mark. A failure is only logged here; YouCoded's strip shows main's reason.
+await replaceOnce('bridge.js',
+  "      await invoke('write_editor_bin', { data: b64 });\n" +
+  "      var pdfPath = await invoke('print_document');\n" +
+  "\n" +
+  "      if (printerName) {\n" +
+  "        var printResult = await invoke('plugin:printer|print_pdf', {\n" +
+  "          id: printerName,\n" +
+  "          path: pdfPath,\n" +
+  "          printer: printerName,\n" +
+  "          print_settings: '{}',\n" +
+  "          remove_after_print: true\n" +
+  "        });\n" +
+  "      } else {\n" +
+  "        await invoke('open_pdf_viewer', { path: pdfPath });\n" +
+  "      }\n" +
+  "\n" +
+  "      if (ref.ew && ref.ew.DesktopOfflineAppDocumentEndSave) {\n" +
+  "        ref.ew.DesktopOfflineAppDocumentEndSave(0);\n" +
+  "      }\n" +
+  "    } catch(e) {\n" +
+  "      window._eoLog('[EO] Print: ERROR: ' + (e.message || e));\n" +
+  "      if (ref.ew && ref.ew.DesktopOfflineAppDocumentEndSave) {\n" +
+  "        ref.ew.DesktopOfflineAppDocumentEndSave(1);\n" +
+  "      }\n" +
+  "    } finally {",
+  "      await invoke('write_editor_bin', { data: b64 });\n" +
+  "      window.AscDesktopEditor._isPrinting = false;\n" +
+  "      await invoke('print_document', { json: window.__ycPrintJson(ref.ew, optionsJson) });\n" +
+  "    } catch(e) {\n" +
+  "      window._eoLog('[EO] Print: ERROR: ' + (e.message || e));\n" +
+  "    } finally {");
 const here = path.dirname(new URL(import.meta.url).pathname);
 await copyFile(path.join(here, '..', 'bridge', 'tauri-relay.js'), path.join(dir, 'tauri-relay.js'));
 await copyFile(path.join(here, '..', 'bridge', 'yc-bridge.js'), path.join(dir, 'yc-bridge.js'));

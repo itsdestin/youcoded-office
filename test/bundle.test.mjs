@@ -69,11 +69,15 @@ test('the built editor turns macros off', async () => {
   assert.match(js, /customization: \{\s*macros: false,\s*macrosMode: 'disable',/);
 });
 
-// v0.1.7: no "Suggest a feature" and no printing (the host refuses print_document).
-test('the built editor has no Suggest a feature and no printing', async () => {
+// v0.1.7: no "Suggest a feature". v0.1.18: printing is on again (the host answers print_document),
+// and the built bridge.js hands the host only the document and the print panel's choices.
+test('the built editor has no Suggest a feature, and prints through the host', async () => {
   const js = await readFile(path.join(B, 'editors', 'editor-patches.js'), 'utf8');
   assert.match(js, /macrosMode: 'disable',\s*suggestFeature: false,/);
-  assert.match(js, /print: false/);
+  assert.match(js, /print: true/);
+  const bridge = await readFile(path.join(B, 'editors', 'bridge.js'), 'utf8');
+  assert.match(bridge, /invoke\('print_document', \{ json: window\.__ycPrintJson\(ref\.ew, optionsJson\) \}\)/);
+  assert.doesNotMatch(bridge, /open_pdf_viewer/);
 });
 
 test('bundle carries licence, notice, manifest and templates', async () => {

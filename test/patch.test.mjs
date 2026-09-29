@@ -14,7 +14,16 @@ async function patchedCopy() {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'yco-patch-'));
   await writeFile(path.join(dir, 'index.html'), '<html><head></head></html>');
   await writeFile(path.join(dir, 'bridge.js'), "var ASC_PROTO_BASE = _isWindows ? 'http://ascdesktop.localhost/' : 'ascdesktop://';\n" +
-    "            await invoke('save_file_as', { path: savePath });\n            if (pathExt !== 'pdf') {\n              invoke('set_window_title', {});\n            }\n");
+    "            await invoke('save_file_as', { path: savePath });\n            if (pathExt !== 'pdf') {\n              invoke('set_window_title', {});\n            }\n" +
+    "    try {\n      window.AscDesktopEditor._isPrinting = true;\n" +
+    "      await invoke('write_editor_bin', { data: b64 });\n" +
+    "      var pdfPath = await invoke('print_document');\n\n" +
+    "      if (printerName) {\n        var printResult = await invoke('plugin:printer|print_pdf', {\n          id: printerName,\n          path: pdfPath,\n          printer: printerName,\n          print_settings: '{}',\n          remove_after_print: true\n        });\n" +
+    "      } else {\n        await invoke('open_pdf_viewer', { path: pdfPath });\n      }\n\n" +
+    "      if (ref.ew && ref.ew.DesktopOfflineAppDocumentEndSave) {\n        ref.ew.DesktopOfflineAppDocumentEndSave(0);\n      }\n" +
+    "    } catch(e) {\n      window._eoLog('[EO] Print: ERROR: ' + (e.message || e));\n" +
+    "      if (ref.ew && ref.ew.DesktopOfflineAppDocumentEndSave) {\n        ref.ew.DesktopOfflineAppDocumentEndSave(1);\n      }\n" +
+    "    } finally {\n      window.AscDesktopEditor._isPrinting = false;\n    }\n");
   await writeFile(path.join(dir, 'editor-patches.js'),
     "          permissions: {\n            edit: true,\n            download: true,\n            print: true\n          }\n        },\n        editorConfig: {\n          mode: 'edit',\n          customization: {\n            about: false,\n            feedback: false\n          }\n        },\n" +
     "                  if (options && options.advancedOptions &&\n                      typeof options.advancedOptions.asc_getNativeOptions !== 'function') {\n                    options.advancedOptions = undefined;\n                  }\n");
@@ -36,12 +45,24 @@ test('the editor opens every document with macros turned off, so a document cann
   await rm(dir, { recursive: true, force: true });
 });
 
-test('the File tab has no "Suggest a feature" and no printing (the host cannot print)', async () => {
+test('the File tab has no "Suggest a feature", and printing stays on (the host prints)', async () => {
   const dir = await patchedCopy();
   const js = await readFile(path.join(dir, 'editor-patches.js'), 'utf8');
   assert.match(js, /suggestFeature: false,/);
-  assert.match(js, /print: false/);
-  assert.doesNotMatch(js, /print: true/);
+  assert.match(js, /print: true/);
+  assert.doesNotMatch(js, /print: false/);
+  await rm(dir, { recursive: true, force: true });
+});
+
+// v0.1.18 (Print): the host makes the PDF and shows the system print dialog; bridge.js only hands
+// over the document and the print panel's choices.
+test('Print hands the host the document and the panel\'s choices, and nothing else', async () => {
+  const dir = await patchedCopy();
+  const js = await readFile(path.join(dir, 'bridge.js'), 'utf8');
+  assert.match(js, /invoke\('print_document', \{ json: window\.__ycPrintJson\(ref\.ew, optionsJson\) \}\)/);
+  assert.doesNotMatch(js, /plugin:printer\|print_pdf|open_pdf_viewer|DesktopOfflineAppDocumentEndSave/);
+  // Saves work again before the host is asked (the dialog can stay open for minutes).
+  assert.ok(js.indexOf('_isPrinting = false;\n      await invoke(\'print_document\'') > 0);
   await rm(dir, { recursive: true, force: true });
 });
 

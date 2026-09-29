@@ -310,6 +310,20 @@
         WV.prototype.initExternalReferenceUpdateTimer = function () {};
       }
     } catch (e) { /* not same-origin or not an editor frame */ }
+    try {
+      // Print (v0.1.18): the print panel's Print button stays greyed out until it has a printer.
+      // The host prints through the operating system's dialog, which lists the real printers, so
+      // the panel gets one stand-in (its row is hidden — printCss). WHY here and not only through
+      // the relay's get_printers: editor-patches.js asks for printers on Windows only.
+      if (!win.__ycPrinter) {
+        var app = win.DE || win.SSE || win.PE;
+        var ctrl = app && app.getController && app.getController('Print');
+        if (ctrl && ctrl.setPrintersInfo) {
+          win.__ycPrinter = true;
+          ctrl.setPrintersInfo('YouCoded', [{ name: 'YouCoded', color_supported: true, duplex_supported: true }]);
+        }
+      }
+    } catch (e) { /* not an editor frame, or its print panel isn't built yet — the next pass tries */ }
   }
 
   blockPeers(window);
@@ -327,20 +341,20 @@
 
   // ── The File tab (backstage): only what works inside YouCoded (v0.1.7) ──
   // WHY each is hidden (audited in all three editors, 2026-09-28): Open / Open Recent / Create
-  // new — the Office start screen does these; Close / Exit — the document's tab does it; Print —
-  // it ends in print_document, which YouCoded's host refuses, so it failed silently; "Save copy"
-  // — it needs a document server's save-as address; "Note lines" (remove_note_separator) —
-  // refused like Print; Version history — YouCoded has its own Versions; Access rights, Help,
-  // Suggest a feature — they need a document server or the internet. Print and Suggest are also
+  // new — the Office start screen does these; Close / Exit — the document's tab does it; "Save copy"
+  // — it needs a document server's save-as address; "Note lines" (remove_note_separator) — a
+  // command YouCoded's host refuses; Version history — YouCoded has its own Versions; Access
+  // rights, Help, Suggest a feature — they need a document server or the internet. Suggest is also
   // switched off in the editor's own config (build/patch.mjs); this list is the second line, and
   // covers the ones no config reaches. Kept: Back, Save (the same save Ctrl+S and autosave make),
   // Save As, Download as and Export to PDF (v0.1.12: the host answers dialog.save and
-  // save_file_as — each writes a separate file, the document stays on its own), Info (Document
+  // save_file_as — each writes a separate file, the document stays on its own), Print (v0.1.18:
+  // the host answers print_document with the system print dialog — see printCss), Info (Document
   // info) and Advanced settings.
   var HIDDEN_FILE_ITEMS = [
     'fm-btn-local-open', 'fm-btn-recent', 'fm-btn-create', 'fm-btn-exit', 'fm-btn-back',
     'fm-btn-save-copy',
-    'fm-btn-print', 'fm-btn-print-with-preview', 'fm-btn-eo-note-separator',
+    'fm-btn-eo-note-separator',
     'fm-btn-history', 'fm-btn-rights', 'fm-btn-help', 'fm-btn-suggest', 'fm-btn-rename',
   ];
 
@@ -466,8 +480,52 @@
       '#file-menu-panel #fm-btn-return { margin-bottom: 12px' + I + '; }' +
       '#file-menu-panel, #file-menu-panel .panel-context { background-color: ' + (t.canvas || t.panel) + I + '; }' +
       '#file-menu-panel .panel-context .header, #file-menu-panel .panel-context h1, #file-menu-panel .panel-context .title { color: ' + t.fg + I + '; }';
-    return css;
+    return css + printCss();
   }
+
+  // ── Print (v0.1.18, finish plan Task 3) ──
+  // WHY: YouCoded's host prints through the operating system's own print dialog, which chooses the
+  // printer, copies, two-sided and colour itself. The editor's print panel stays for what only it
+  // can do — the preview, the page setup (applied to the document itself) and which pages or
+  // sheets — and loses the rows the system dialog owns, so nothing on it is silently ignored:
+  // printer, colour, copies, sides, and "Print using the system dialog" (the Print button is that
+  // now). "Print selection" (the right-click menus) and a workbook's "Selection" range go too: the
+  // host prints from the saved document, which has no selection. Quick print ("print on the last
+  // printer without asking") goes: every print here asks.
+  function printCss() {
+    var I = ' !important';
+    return '#id-print-settings tr:has(#print-combo-printer), #id-print-settings tr:has(+ tr #print-combo-printer),' +
+      ' #id-print-settings tr:has(#print-combo-color-printing), #id-print-settings tr:has(+ tr #print-combo-color-printing),' +
+      ' #id-print-settings tr:has(> td > #print-combo-sides), #id-print-settings tr:has(+ tr > td > #print-combo-sides),' +
+      ' #id-print-settings tr:has(> td > .pages #print-txt-copies), #id-print-settings tr:has(> td #print-txt-copies):not(:has(#print-txt-pages)),' +
+      ' #id-print-settings tr:has(> td > .separator), #id-print-settings tr:has(#print-btn-system-dialog),' +
+      ' #print-combo-range li[data-value="2"],' +
+      ' .dropdown-menu li:has(> a .menu__icon.btn-print), #slot-btn-dt-print-quick, .btn-quick-print { display: none' + I + '; }';
+  }
+
+  // What the print panel chose, for the host (bridge.js's Print, patched in build/patch.mjs). A
+  // document or presentation sends the editor's own options (a page list in nativeOptions); a
+  // workbook's choices live in the editor window's AscDesktopEditor_PrintOptions (sdkjs puts them
+  // there, not in the options text), so they are read out in the shape the PDF export sends.
+  window.__ycPrintJson = function (ew, optionsJson) {
+    try {
+      if (window.AscDesktopEditor && window.AscDesktopEditor._currentDocType === 'cell') {
+        var po = ew && ew.AscDesktopEditor_PrintOptions;
+        // One print's choices only: Ctrl+P prints without the panel, and must not reuse them.
+        if (ew) ew.AscDesktopEditor_PrintOptions = null;
+        var ad = po && po.advancedOptions;
+        // No panel (Ctrl+P): the whole workbook, as every other editor prints the whole document.
+        // WHY said outright: without a print type sdkjs prints only the active sheet (measured).
+        if (!ad) return JSON.stringify({ adjustOptions: { printType: 1 }, spreadsheetLayout: { ignorePrintArea: false } });
+        var get = function (name, field) { return typeof ad[name] === 'function' ? ad[name]() : ad[field]; };
+        return JSON.stringify({
+          adjustOptions: { printType: get('asc_getPrintType', 'printType'), startPageIndex: get('asc_getStartPageIndex', 'startPageIndex'), endPageIndex: get('asc_getEndPageIndex', 'endPageIndex'), activeSheetsArray: get('asc_getActiveSheetsArray', 'activeSheetsArray') },
+          spreadsheetLayout: { ignorePrintArea: !!get('asc_getIgnorePrintArea', 'ignorePrintArea') },
+        });
+      }
+    } catch (e) { return ''; }
+    return typeof optionsJson === 'string' ? optionsJson : '';
+  };
 
   function buildCss(th) {
     var t = th.tokens;

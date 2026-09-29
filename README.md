@@ -53,6 +53,16 @@ the bundled `x2t`. Two things to know:
   page settings and print range, reach `x2t`. A TXT's encoding does not (`x2t` always writes
   UTF-8), so Word's TXT encoding dialog is answered for the person and never shown.
 
+## Print
+
+Print (File → Print, Ctrl+P) goes through the host too: `bridge.js` hands over the document and
+the print panel's choices (a document's or presentation's pages; a workbook's sheets, pages and
+print area), the host makes a PDF with `x2t` in its own temp folder and shows the operating
+system's print dialog for it. That dialog chooses the printer, copies, two-sided and colour, so
+those rows leave the editor's print panel; printing only the selection is not offered (`x2t`
+prints from the saved document, which has no selection), nor is quick print. Page breaks follow
+`x2t`'s layout, which can differ slightly from the editor's preview (see the fonts note above).
+
 ## Building
 
 Linux x64 only, for now:
