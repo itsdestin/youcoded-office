@@ -42,6 +42,32 @@
   }
   blockPeers(window);
 
+  // ── The person's editor settings, remembered between documents (v0.1.19) ──
+  // WHY here, first, and synchronously: each document opens on its own one-time office://<token>
+  // origin, so this page's localStorage starts empty, and web-apps reads its settings (units,
+  // spell check, zoom, the view toggles…) from localStorage as it starts. The host keeps the ones
+  // the person chose (yc-bridge.js sends each change) and serves them on this origin; they are
+  // written in before any editor code runs. A key the page already has is left alone: this page
+  // may be a reload of a document whose settings changed since it opened, and those are newer.
+  // The host sends only its allow-list of settings keys (desktop editor-settings.ts); this checks
+  // only that each is text.
+  function seedSettings(win) {
+    try {
+      var ls = win.localStorage;
+      var x = new win.XMLHttpRequest();
+      x.open('GET', win.location.origin + '/yc-settings.json', false);
+      x.send();
+      if (x.status !== 200) return;
+      var saved = JSON.parse(x.responseText);
+      if (!saved || typeof saved !== 'object') return;
+      for (var k in saved) {
+        if (!Object.prototype.hasOwnProperty.call(saved, k) || typeof saved[k] !== 'string') continue;
+        if (ls.getItem(k) === null) ls.setItem(k, saved[k]);
+      }
+    } catch (e) { /* no host answer or no storage: the editor starts with its own defaults */ }
+  }
+  seedSettings(window);
+
   function onDefine(owner, name, patch) {
     var value = owner[name];
     if (value) { try { patch(value); } catch (e) { /* keep the editor running */ } }

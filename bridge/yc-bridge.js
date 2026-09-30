@@ -808,6 +808,33 @@
     try { if (api && api.asc_SetViewRulers) api.asc_SetViewRulers(!slim); } catch (e) { /* not this editor */ }
   }
 
+  // ── Remember the person's editor settings (v0.1.19) ──
+  // WHY: the editor keeps File → Advanced settings and its view toggles in localStorage, which on
+  // this document's one-time origin is gone when the document closes. The editor frame shares
+  // this page's origin, so each of its localStorage writes arrives here as a 'storage' event
+  // (this page's own writes — rulers, tips — do not). Keys that look like an editor setting are
+  // collected for a moment and sent to the host, which keeps only its allow-list (desktop
+  // editor-settings.ts) and hands them to the next document's yc-early.js. Nothing is sent for
+  // anything else the page stores.
+  var SETTING = /^(?:de|sse|pe)-|^app-settings-/;
+  var changedSettings = null, settingsTimer = 0;
+  function sendSettings() {
+    settingsTimer = 0;
+    var batch = changedSettings; changedSettings = null;
+    if (!batch) return;
+    try {
+      var p = window.__TAURI__ && window.__TAURI__.core.invoke('save_editor_settings', { settings: batch });
+      if (p && p.catch) p.catch(function () { /* not remembered: the choice still holds in this document */ });
+    } catch (e) { /* no relay */ }
+  }
+  window.addEventListener('storage', function (e) {
+    try {
+      if (!e || typeof e.key !== 'string' || !SETTING.test(e.key) || e.storageArea !== window.localStorage) return;
+      (changedSettings = changedSettings || {})[e.key] = e.newValue; // null: put back to the default
+      if (!settingsTimer) settingsTimer = setTimeout(sendSettings, 300);
+    } catch (err) { /* keep the editor running */ }
+  });
+
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent) return; // only the host frames us
     var d = e.data || {};

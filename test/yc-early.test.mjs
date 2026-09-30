@@ -106,3 +106,46 @@ test('a canvas scrollbar thumb is drawn slim and rounded in the theme colour, th
   assert.deepEqual(so.context.ops.filter((o) => o[0] === 'fillStyle').map((o) => o[1]), ['rgb(36,97,63)']);
   assert.equal(so.scrollColor, 0x24, 'sdkjs\'s own hover bookkeeping still runs');
 });
+
+// v0.1.19: the person's editor settings are written into this page's (empty, one-time) storage
+// before any editor code reads it — from the host's answer on the page's own origin.
+function settingsPage({ status = 200, body = '{}', stored = {} } = {}) {
+  const m = new Map(Object.entries(stored));
+  const asked = [];
+  const window = {
+    location: { origin: 'office://tok' },
+    localStorage: { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) },
+    XMLHttpRequest: function () {
+      this.open = (method, url, async) => asked.push({ method, url, async });
+      this.send = () => { if (status === 'throw') throw new Error('offline'); this.status = status; this.responseText = body; };
+    },
+  };
+  return { window, m, asked };
+}
+async function runEarly(window) {
+  const src = await readFile(path.resolve(import.meta.dirname, '..', 'bridge', 'yc-early.js'), 'utf8');
+  vm.runInContext(src, vm.createContext({ window, Object, JSON }));
+}
+
+test('the remembered settings are in storage before the editor starts, asked synchronously of its own origin', async () => {
+  const p = settingsPage({ body: JSON.stringify({ 'de-settings-unit': '1', 'sse-settings-r1c1': '1', 'de-settings-zoom': 100 }) });
+  await runEarly(p.window);
+  assert.deepEqual(p.asked, [{ method: 'GET', url: 'office://tok/yc-settings.json', async: false }]);
+  assert.equal(p.m.get('de-settings-unit'), '1');
+  assert.equal(p.m.get('sse-settings-r1c1'), '1');
+  assert.equal(p.m.has('de-settings-zoom'), false, 'only text values are written');
+});
+
+test('a reloaded page keeps the settings it already has', async () => {
+  const p = settingsPage({ body: JSON.stringify({ 'de-settings-unit': '1' }), stored: { 'de-settings-unit': '2' } });
+  await runEarly(p.window);
+  assert.equal(p.m.get('de-settings-unit'), '2');
+});
+
+test('no answer from the host leaves the editor on its own defaults, and the page still loads', async () => {
+  for (const variant of [{ status: 404, body: 'not found' }, { status: 200, body: '{bad' }, { status: 'throw' }]) {
+    const p = settingsPage(variant);
+    await runEarly(p.window);
+    assert.equal(p.m.size, 0);
+  }
+});
