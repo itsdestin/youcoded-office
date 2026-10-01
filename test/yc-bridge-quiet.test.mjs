@@ -303,3 +303,18 @@ test('Print sends a document\'s own options, and a workbook\'s panel choices onc
   assert.equal(ew.AscDesktopEditor_PrintOptions, null);
   assert.deepEqual(JSON.parse(win.__ycPrintJson(ew, '')), { adjustOptions: { printType: 1 }, spreadsheetLayout: { ignorePrintArea: false } });
 });
+
+// v0.1.21 (finish plan Task 6): Office's comments panel wears YouCoded's comment cards — the same
+// surfaces, border, radius and neutral avatar as the app's own (desktop components/comments/).
+test('comment cards in the editor look like the app\'s: inset card, edge border, neutral avatar, no quote', async () => {
+  const { post, tick, head } = await load();
+  post({ type: 'yc:office-theme', theme: theme({ tokens: { ...theme().tokens, inset: '#0a0b0c', 'edge-dim': '#202122', 'radius-lg': '14px' } }) });
+  tick();
+  const css = cssOf(head);
+  assert.match(css, /\.user-comment-item \{ [^}]*background-color: #0a0b0c !important; border: 1px solid #202122 !important; border-radius: 14px !important;/);
+  // The editor colours each author's initial; the app's avatar is neutral (accent is for state).
+  assert.match(css, /\.user-comment-item \.user-info \.color \{ [^}]*background-color: #0a0b0c !important;/);
+  assert.match(css, /\.user-comment-item \.user-quote \{ display: none !important; \}/);
+  // Resolved: the circle check filled in the accent.
+  assert.match(css, /\.btn-resolve\.comment-resolved \{ [^}]*background-color: #[0-9a-f]+ !important; \}/i);
+});

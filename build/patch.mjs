@@ -14,7 +14,8 @@ async function replaceOnce(file, from, to) {
 }
 
 // 1. Relay first (bridge.js calls __TAURI__ at load), then the theme bridge.
-await replaceOnce('index.html', '<head>', '<head><script src="tauri-relay.js"></script><script src="yc-bridge.js"></script>');
+// v0.1.21: yc-comments.js after it — the host's comment changes for the open document (Task 6).
+await replaceOnce('index.html', '<head>', '<head><script src="tauri-relay.js"></script><script src="yc-bridge.js"></script><script src="yc-comments.js"></script>');
 // 2. Media and dictionaries under the document's own origin (design §3a), never a shared scheme.
 await replaceOnce('bridge.js',
   "var ASC_PROTO_BASE = _isWindows ? 'http://ascdesktop.localhost/' : 'ascdesktop://';",
@@ -106,8 +107,15 @@ await replaceOnce('bridge.js',
   "    } catch(e) {\n" +
   "      window._eoLog('[EO] Print: ERROR: ' + (e.message || e));\n" +
   "    } finally {");
+// 9. The person's own comments carry the name YouCoded gives them (v0.1.21, finish plan Task 6).
+//    WHY: YouCoded writes the person's comments into Word and Excel files as "You" and the
+//    assistant's as "Assistant" (desktop docx-comments.ts / xlsx-comments.ts). The editor called
+//    the person "User", so one person's comments showed under two names depending on where they
+//    were written.
+await replaceOnce('editor-patches.js', "name: _t('user')", "name: 'You'");
 const here = path.dirname(new URL(import.meta.url).pathname);
 await copyFile(path.join(here, '..', 'bridge', 'tauri-relay.js'), path.join(dir, 'tauri-relay.js'));
 await copyFile(path.join(here, '..', 'bridge', 'yc-bridge.js'), path.join(dir, 'yc-bridge.js'));
 await copyFile(path.join(here, '..', 'bridge', 'yc-early.js'), path.join(dir, 'yc-early.js'));
+await copyFile(path.join(here, '..', 'bridge', 'yc-comments.js'), path.join(dir, 'yc-comments.js'));
 console.log('patch: ok');

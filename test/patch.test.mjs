@@ -25,7 +25,7 @@ async function patchedCopy() {
     "      if (ref.ew && ref.ew.DesktopOfflineAppDocumentEndSave) {\n        ref.ew.DesktopOfflineAppDocumentEndSave(1);\n      }\n" +
     "    } finally {\n      window.AscDesktopEditor._isPrinting = false;\n    }\n");
   await writeFile(path.join(dir, 'editor-patches.js'),
-    "          permissions: {\n            edit: true,\n            download: true,\n            print: true\n          }\n        },\n        editorConfig: {\n          mode: 'edit',\n          customization: {\n            about: false,\n            feedback: false\n          }\n        },\n" +
+    "          permissions: {\n            edit: true,\n            download: true,\n            print: true\n          }\n        },\n        editorConfig: {\n          mode: 'edit',\n          user: {\n            id: 'local-user',\n            name: _t('user')\n          },\n          customization: {\n            about: false,\n            feedback: false\n          }\n        },\n" +
     "                  if (options && options.advancedOptions &&\n                      typeof options.advancedOptions.asc_getNativeOptions !== 'function') {\n                    options.advancedOptions = undefined;\n                  }\n");
   const main = path.join(dir, 'web-apps', 'apps', 'documenteditor', 'main');
   await mkdir(main, { recursive: true });
@@ -97,5 +97,18 @@ test('Save As sends the editor\'s export choices with save_file_as', async () =>
   assert.match(patches, /asc_getCodePage/);
   const kept = patches.indexOf('window.__ycTextOptions = {');
   assert.ok(kept > 0 && kept < patches.indexOf('options.advancedOptions = undefined;'), 'kept aside before they are dropped');
+  await rm(dir, { recursive: true, force: true });
+});
+
+// v0.1.21 (finish plan Task 6): the person's own comments are "You", the name YouCoded writes for
+// them into Word and Excel files, and the comments bridge loads after the theme bridge.
+test('the person is "You" in the editor, and the comments bridge loads after the theme bridge', async () => {
+  const dir = await patchedCopy();
+  const js = await readFile(path.join(dir, 'editor-patches.js'), 'utf8');
+  assert.match(js, /name: 'You'/);
+  assert.doesNotMatch(js, /_t\('user'\)/);
+  const html = await readFile(path.join(dir, 'index.html'), 'utf8');
+  assert.ok(html.indexOf('yc-bridge.js') < html.indexOf('yc-comments.js'));
+  await readFile(path.join(dir, 'yc-comments.js'), 'utf8');
   await rm(dir, { recursive: true, force: true });
 });

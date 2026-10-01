@@ -53,6 +53,15 @@ the bundled `x2t`. Two things to know:
   page settings and print range, reach `x2t`. A TXT's encoding does not (`x2t` always writes
   UTF-8), so Word's TXT encoding dialog is answered for the person and never shown.
 
+## Comments
+
+While a document is open, YouCoded's assistant (and the app's own reading view) adds, answers,
+resolves, edits and deletes comments through the editor itself (`bridge/yc-comments.js`), so they
+show at once and the editor's autosave writes them — a write to the file would be erased by that
+autosave. The editor tells the host whenever a comment changes, so the app's reading views refresh.
+The person's own comments are named "You", the name YouCoded writes for them, and the comments
+panel is styled like YouCoded's comment cards.
+
 ## Print
 
 Print (File → Print, Ctrl+P) goes through the host too: `bridge.js` hands over the document and
