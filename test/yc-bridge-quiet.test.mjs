@@ -318,3 +318,68 @@ test('comment cards in the editor look like the app\'s: inset card, edge border,
   // Resolved: the circle check filled in the accent.
   assert.match(css, /\.btn-resolve\.comment-resolved \{ [^}]*background-color: #[0-9a-f]+ !important; \}/i);
 });
+
+// v0.1.23 (finish plan Task 7, Destin: "the side bars and such should gracefully connect to the
+// header element to frame the doc/content"; a full-width line under the header; the File tab in
+// YouCoded's card style). The ribbon, strips and status bar are one panel frame with no lines in
+// it; the desk is the one rounded, outlined hole; the File tab's page is the same hole.
+const ruleFor = (css, selectorPart) => css.split('}').filter((r) => r.split('{')[0].includes(selectorPart));
+
+test('the ribbon, side strips and status bar are one frame: painted once, no lines inside it', async () => {
+  for (const wallpaper of [false, true]) {
+    const { post, tick, head } = await load();
+    post({ type: 'yc:office-theme', theme: theme({ wallpaper, tokens: { ...theme().tokens, 'radius-lg': '14px' } }) });
+    tick();
+    const css = cssOf(head);
+    // The frame's bands paint the panel...
+    const bands = ruleFor(css, '#toolbar, #left-menu, #right-menu, #statusbar');
+    assert.ok(bands.some((r) => /background: (#111111|rgba\(17,17,17,1\))/.test(r)), 'the bands paint the panel');
+    // ...and nothing inside them paints it again or draws an edge.
+    for (const part of ['#toolbar .toolbar', '#left-menu .tool-menu-btns', '#right-menu .tool-menu-btns', '#statusbar .statusbar', '#toolbar .extra']) {
+      const r = ruleFor(css, part).find((x) => x.includes('background: transparent'));
+      assert.ok(r && /box-shadow: none/.test(r), `${part} is see-through with no outline`);
+    }
+    assert.ok(ruleFor(css, '#toolbar .box-controls::before').some((r) => /box-shadow: none/.test(r)), 'the tools row loses its rounded under-line');
+    assert.ok(ruleFor(css, '#left-menu .tool-menu-btns').some((r) => /border: 0/.test(r)), 'the strips lose their own edge');
+    // The old per-band hairlines are gone.
+    assert.doesNotMatch(css, /inset -1px 0 0 #333333/);
+    assert.doesNotMatch(css, /#statusbar, \.statusbar \{ box-shadow: inset 0 1px 0/);
+    // No inner layer is painted a second time on a wallpaper (the second shade under the ribbon).
+    if (wallpaper) assert.doesNotMatch(css, /#toolbar \.toolbar, #statusbar, \.statusbar, #left-menu/);
+  }
+});
+
+test('the document desk is one hole: the large radius, one edge line, corners in the frame colour', async () => {
+  const { post, tick, head } = await load();
+  post({ type: 'yc:office-theme', theme: theme({ tokens: { ...theme().tokens, 'radius-lg': '14px' } }) });
+  tick();
+  const css = cssOf(head);
+  const hole = ruleFor(css, '#id_main_parent::after').find((r) => r.includes('border-radius'));
+  assert.ok(hole, 'the hole layer exists');
+  for (const s of ['#editor-container > #editor_sdk::after', '.layout-ct.vbox > #editor_sdk::after', '#id_main_parent::after']) assert.ok(hole.includes(s), `${s} is a hole`);
+  assert.match(hole, /border-radius: 14px/);
+  assert.match(hole, /box-shadow: 0 0 0 14px rgba\(17,17,17,1\), inset 0 0 0 1px #333333/);
+  assert.match(hole, /pointer-events: none/);
+  // The presentation's outer #editor_sdk holds the slide list (frame) and is not cut itself.
+  assert.ok(ruleFor(css, '#editor_sdk:has(> #id_main_parent)::after').some((r) => /content: none/.test(r)));
+});
+
+test('the File tab: list in the frame, page as the hole, content on YouCoded cards, no accent bar', async () => {
+  const { post, tick, head } = await load();
+  post({ type: 'yc:office-theme', theme: theme({ tokens: { ...theme().tokens, 'radius-lg': '14px', 'radius-md': '9px' } }) });
+  tick();
+  const css = cssOf(head);
+  assert.ok(ruleFor(css, '#file-menu-panel .panel-menu').some((r) => /border-right: 0/.test(r)), 'no line beside the list');
+  const page = ruleFor(css, '#file-menu-panel .panel-context > .content-box').find((r) => r.includes('border-radius'));
+  assert.match(page, /background-color: #000000/);
+  assert.match(page, /border-radius: 14px/);
+  assert.match(page, /inset 0 0 0 1px #333333/);
+  const card = ruleFor(css, 'table.main').find((r) => r.includes('border-radius'));
+  assert.match(card, /background-color: #111111/);
+  assert.match(card, /border: 1px solid #333333/);
+  assert.match(card, /border-radius: 14px/);
+  assert.ok(ruleFor(css, '.btn-doc-format').some((r) => /border-radius: 14px/.test(r)), 'export formats are cards');
+  const open = ruleFor(css, 'li.fm-btn.active').find((r) => r.includes('background-color'));
+  assert.match(open, /box-shadow: none/);
+  assert.doesNotMatch(css, /inset 3px 0 0 #ff0000/);
+});

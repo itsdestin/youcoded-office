@@ -358,6 +358,108 @@
     'fm-btn-history', 'fm-btn-rights', 'fm-btn-help', 'fm-btn-suggest', 'fm-btn-rename',
   ];
 
+  // ── One frame around the document (v0.1.23, finish plan Task 7) ──
+  // WHY: Destin, 2026-09-29: "the side bars and such should gracefully connect to the header
+  // element to frame the doc/content"; "header and sidebars still dont connect properly to frame
+  // the edit area"; and a full-width line under the header in a different colour. Before, the
+  // ribbon was its own rounded card with a hairline all round, the side strips and status bar each
+  // drew their own hairline, and on a glass theme the ribbon's lower band painted the panel twice
+  // (a second shade between the ribbon and the strips). Now the ribbon, the side strips, the open
+  // side panels, the formula bar and the status bar are ONE panel surface with no lines inside
+  // it, and the document's desk is the one hole cut into it: the theme's large radius on all four
+  // corners and a single edge hairline round it — the same shape YouCoded's host gives the whole
+  // editor (EditorFrame's card), so the two radii match.
+  // The hole: Word's #editor_sdk (rulers and page), the sheet's #editor_sdk (headers and grid —
+  // the formula bar stays in the frame above it), the presentation's #id_main_parent (slide and
+  // notes — the slide list stays in the frame beside it). Its corners are painted by a layer over
+  // it whose spread shadow (the frame's own colour) fills only what lies outside the rounded
+  // shape; the hole clips the rest. So the canvases underneath are never resized or re-laid out,
+  // and on a wallpaper theme the desk stays see-through.
+  var HOLES = '#editor-container > #editor_sdk, .layout-ct.vbox > #editor_sdk, #id_main_parent';
+  function frameCss(t, o) {
+    var I = ' !important';
+    var lg = t['radius-lg'] || '12px';
+    // Every part of the frame, painted once (a glass panel painted twice reads as a second shade).
+    var bands = '#toolbar, #left-menu, #right-menu, #statusbar, #cell-editing-box, #cell-editing-box + .layout-resizer';
+    // Their inner layers, which the editor paints too: see-through, no outline, no card corners.
+    var inner = '#toolbar .toolbar, #toolbar .box-controls, #toolbar .box-tabs, #toolbar section.tabs, #toolbar .extra, #statusbar .statusbar,' +
+      ' #right-menu .right-panel > .content-box, #right-menu .right-panel .content-box,' +
+      ' #left-menu .tool-menu-btns, #left-menu .left-panel, #right-menu .tool-menu-btns, #right-menu .right-panel,' +
+      ' #left-panel-search, #left-panel-chat, #left-panel-navigation, #left-panel-thumbnails, #id_panel_thumbnails';
+    return bands + ' { background: ' + o.panel + I + '; box-shadow: none' + I + '; }' +
+      inner + ' { background: transparent' + I + '; box-shadow: none' + I + '; border-radius: 0' + I + '; }' +
+      // The strips' own edge (--border-sidemenu) and the tools row's rounded under-line.
+      '#left-menu .tool-menu-btns, #right-menu .tool-menu-btns, #left-menu .left-panel, #right-menu .right-panel { border: 0' + I + '; }' +
+      '#toolbar .box-controls::before, #toolbar .box-controls::after { box-shadow: none' + I + '; border: 0' + I + '; background: transparent' + I + '; }' +
+      // The open ribbon tab keeps no fill of its own; its accent underline says which it is.
+      '#toolbar section.tabs li.ribtab.active { background: transparent' + I + '; }' +
+      '#statusbar, #statusbar .statusbar, #toolbar .toolbar { border: 0' + I + '; }' +
+      // The presentation's slide list sits in the frame, beside the hole.
+      '#editor-container > #editor_sdk:has(> #id_main_parent) { background: ' + o.panel + I + '; }' +
+      '#editor-container > #editor_sdk:has(> #id_main_parent) { overflow: visible' + I + '; }' +
+      '#editor-container:has(> #editor_sdk > #id_main_parent) { background: transparent' + I + '; }' +
+      '#editor-container > #editor_sdk:not(:has(> #id_main_parent)), .layout-ct.vbox > #editor_sdk, #id_main_parent { position: relative' + I + '; overflow: hidden' + I + '; }' +
+      HOLES.split(', ').map(function (s) { return s + '::after'; }).join(', ') +
+      ' { content: ""' + I + '; position: absolute' + I + '; inset: 0' + I + '; z-index: 1000' + I + '; pointer-events: none' + I + ';' +
+      ' border-radius: ' + lg + I + '; box-shadow: 0 0 0 ' + lg + ' ' + o.panel + ', inset 0 0 0 1px ' + t.edge + I + '; }' +
+      // The presentation's #editor_sdk holds the hole and must not be cut itself.
+      '#editor-container > #editor_sdk:has(> #id_main_parent)::after { content: none' + I + '; }' +
+      // The selected strip item: one step down the depth ladder, the medium radius, like the File
+      // tab's open item and YouCoded's own selected rows.
+      '.tool-menu-btns .btn-category { border-radius: ' + (t['radius-md'] || '8px') + I + '; }' +
+      '.tool-menu-btns .btn-category.active, .tool-menu-btns .btn-category.active:hover { background-color: ' + t.inset + I + '; }';
+  }
+
+  // ── The File tab: the same frame, YouCoded's cards inside (v0.1.23, finish plan Task 7) ──
+  // WHY: Destin, 2026-09-29 (P-file): "make this match youcoded's card styling. this still doesn't
+  // blend well into or properly separate from the file/home/insert/etc buttons, or the
+  // focused/selected side pane. should all be rounded and such while also separating from the
+  // youcoded theme frame". So the File tab is laid out like the editor itself: its list sits in the
+  // panel frame (no line beside it), right under the ribbon's tab row (the stub of the ribbon's
+  // tools that showed between them is covered); the page beside it is the canvas hole, with the
+  // large radius and an edge hairline, inset from the frame's edges; what the page shows — the
+  // document's info, the settings, the export formats — sits on YouCoded's cards (panel, edge
+  // border, large radius, 16px padding) with eyebrow section titles (guide G-7). The open item is
+  // one step down the depth ladder with the medium radius, like the strip's selected button.
+  // Opaque, even over a wallpaper (v0.1.8): the File tab covers the document, and a see-through
+  // panel showed the page's text through its list and settings (Meadow Mist, 2026-09-28).
+  function fileTabCss(t) {
+    var I = ' !important';
+    var md = t['radius-md'] || '8px', lg = t['radius-lg'] || '12px';
+    var F = '#file-menu-panel';
+    var page = F + ' .panel-context > .content-box';
+    return F + ' { top: 28px' + I + '; background-color: ' + t.panel + I + '; }' +
+      F + ' .panel-menu { background-color: transparent' + I + '; border-right: 0' + I + '; padding: 8px 8px 12px' + I + '; }' +
+      F + ' .panel-menu li.fm-btn { height: 32px' + I + '; padding: 0 12px' + I + '; margin-bottom: 2px' + I + '; border-radius: ' + md + I + '; }' +
+      F + ' .panel-menu li.fm-btn > a { font-size: 13px' + I + '; color: ' + t.fg + I + '; }' +
+      F + ' .panel-menu li.fm-btn:hover:not(.disabled) { background-color: ' + t.inset + I + '; }' +
+      F + ' .panel-menu li.fm-btn.active:not(.disabled) { background-color: ' + t.inset + I + '; box-shadow: none' + I + '; }' +
+      F + ' .panel-menu li.fm-btn.active:not(.disabled) > a { font-weight: 600' + I + '; }' +
+      F + ' #fm-btn-return { margin-bottom: 12px' + I + '; }' +
+      F + ' .panel-context { background-color: transparent' + I + '; }' +
+      // The page: the canvas hole, clear of the frame's right and bottom edges by the same 8px the
+      // list keeps from its left.
+      page + ' { background-color: ' + (t.canvas || t.panel) + I + '; border-radius: ' + lg + I + '; box-shadow: inset 0 0 0 1px ' + t.edge + I + ';' +
+      ' margin: 8px 8px 8px 0' + I + '; height: calc(100% - 16px)' + I + '; width: auto' + I + '; right: 0' + I + '; }' +
+      F + ' .panel-context .header, ' + F + ' .panel-context h1, ' + F + ' .panel-context .title { color: ' + t.fg + I + '; }' +
+      // A page's own title (Advanced settings, Export) above its card; Info's title is the first row
+      // of its card, so it reads as the card's title (guide §2.2: 16px medium).
+      page + ' .flex-settings > .header, ' + page + ' .content-container > .header { font-size: 18px' + I + '; font-weight: 600' + I + '; color: ' + t.fg + I + '; }' +
+      page + ' table.main td.header { font-size: 16px' + I + '; font-weight: 500' + I + '; color: ' + t.fg + I + '; padding-top: 8px' + I + '; }' +
+      // The cards: Info's table, Advanced settings' table, and the export formats' tiles.
+      page + ' table.main, ' + page + ' .flex-settings > table { background-color: ' + t.panel + I + '; border: 1px solid ' + t.edge + I + '; border-radius: ' + lg + I + ';' +
+      ' border-collapse: separate' + I + '; padding: 8px 16px 16px' + I + '; max-width: 760px' + I + '; width: auto' + I + '; }' +
+      // Section titles inside a card are eyebrows (guide G-7): uppercase, 11px, muted.
+      page + ' table.main td.title label, ' + page + ' .flex-settings td.group-name label {' +
+      ' text-transform: uppercase' + I + '; font-size: 11px' + I + '; letter-spacing: 0.06em' + I + '; font-weight: 500' + I + '; color: ' + (t['fg-muted'] || t.fg) + I + '; }' +
+      // Each export format is a small card around its file icon (the icon filled the old tile).
+      page + ' .format-items .btn-doc-format { background-color: ' + t.panel + I + '; border: 1px solid ' + t.edge + I + '; border-radius: ' + lg + I + ';' +
+      ' box-sizing: content-box' + I + '; padding: 12px 14px' + I + '; }' +
+      page + ' .format-items .format-item { margin: 0 12px 12px 0' + I + '; }' +
+      page + ' .format-items .btn-doc-format:hover { background-color: ' + t.inset + I + '; }' +
+      page + ' .divider { background-color: transparent' + I + '; border: 0' + I + '; }';
+  }
+
   // The polish pass (v0.1.7, Destin: "weird rounded pills but also square outlines", "all of the
   // scrollbars are unstyled", "hard to separate some of the side panels and menus … from the
   // document area", "some of the options under the file tab are just odd or don't seem to work").
@@ -414,15 +516,10 @@
     // WHY: the ribbon, the side strips, the open side panels, the formula bar, the status bar
     // and the document desk were all near one colour with no line between them. YouCoded's
     // layering (guide §2.1, §2.4): the desk is the canvas; bands and side panes are the panel;
-    // fields are inset; a 1px edge hairline sits between regions. Hairlines are inset shadows,
-    // not borders, so the editor's own layout (it measures these boxes in script) does not move.
-    css += '#toolbar > .toolbar, #toolbar .toolbar.toolbar-mask { box-shadow: inset 0 0 0 1px ' + t.edge + I + '; }' +
-      '#statusbar, .statusbar { box-shadow: inset 0 1px 0 ' + t.edge + I + '; }' +
-      '#left-menu .tool-menu-btns, #left-menu.tool-menu, .tool-menu.left .tool-menu-btns { box-shadow: inset -1px 0 0 ' + t.edge + I + '; }' +
-      '#right-menu .tool-menu-btns, .tool-menu.right .tool-menu-btns { box-shadow: inset 1px 0 0 ' + t.edge + I + '; }' +
-      '.left-panel, #left-panel-search, #left-panel-comments, #left-panel-chat, #left-panel-navigation, #left-panel-thumbnails { background-color: ' + o.panel + I + '; box-shadow: inset -1px 0 0 ' + t.edge + I + '; }' +
-      '.right-panel, #right-menu .right-panel { background-color: ' + o.panel + I + '; box-shadow: inset 1px 0 0 ' + t.edge + I + '; }' +
-      '#cell-editing-box { box-shadow: inset 0 -1px 0 ' + t.edge + I + '; }';
+    // fields are inset. Since v0.1.23 the bands are one frame with no lines inside it and the desk
+    // is the one outlined hole (frameCss says why). Outlines are shadows, not borders, so the
+    // editor's own layout (it measures these boxes in script) does not move.
+    css += frameCss(t, o);
     // WHY: a menu or dropdown opened over the ribbon was the ribbon's own colour with a faint
     // line; YouCoded's menus (G-21) are the panel with an edge border and a floating-layer shadow,
     // and their rows round their hover fill.
@@ -468,18 +565,8 @@
       // hidden above) takes the same failing update path as the dialog's Update values; the linked
       // source's name stays readable, but as plain text: its link opens the source through a
       // document server this host doesn't have.
-      '#chart-open-external-link { pointer-events: none' + I + '; cursor: default' + I + '; color: inherit' + I + '; text-decoration: none' + I + '; border-bottom: none' + I + '; }' +
-      // Opaque, even over a wallpaper: the File tab covers the document, and a see-through
-      // panel showed the page's text through its list and settings (Meadow Mist, 2026-09-28).
-      '#file-menu-panel .panel-menu { background-color: ' + t.panel + I + '; border-right: 1px solid ' + t.edge + I + '; padding: 12px 8px 16px' + I + '; }' +
-      '#file-menu-panel .panel-menu li.fm-btn { height: 32px' + I + '; padding: 0 12px' + I + '; margin-bottom: 2px' + I + '; border-radius: ' + md + I + '; }' +
-      '#file-menu-panel .panel-menu li.fm-btn > a { font-size: 13px' + I + '; color: ' + t.fg + I + '; }' +
-      '#file-menu-panel .panel-menu li.fm-btn:hover:not(.disabled) { background-color: ' + t.inset + I + '; }' +
-      '#file-menu-panel .panel-menu li.fm-btn.active:not(.disabled) { background-color: ' + t.inset + I + '; box-shadow: inset 3px 0 0 ' + t.accent + I + '; }' +
-      '#file-menu-panel .panel-menu li.fm-btn.active:not(.disabled) > a { font-weight: 600' + I + '; }' +
-      '#file-menu-panel #fm-btn-return { margin-bottom: 12px' + I + '; }' +
-      '#file-menu-panel, #file-menu-panel .panel-context { background-color: ' + (t.canvas || t.panel) + I + '; }' +
-      '#file-menu-panel .panel-context .header, #file-menu-panel .panel-context h1, #file-menu-panel .panel-context .title { color: ' + t.fg + I + '; }';
+      '#chart-open-external-link { pointer-events: none' + I + '; cursor: default' + I + '; color: inherit' + I + '; text-decoration: none' + I + '; border-bottom: none' + I + '; }';
+    css += fileTabCss(t);
     return css + printCss() + commentsCss(t);
   }
 
@@ -674,14 +761,16 @@
       polishCss(t, { panel: panel, thumb: thumb, thumbHover: thumbHover, tile: tile, shadow: shadow, wallpaper: th.wallpaper });
     if (th.wallpaper) {
       css += 'html, body, #viewport, .layout-region, #editor_sdk, #id_main, #ws-canvas-outer, .ws-canvas-area { background-color: transparent !important; }' +
-        '#toolbar .toolbar, #statusbar, .statusbar, #left-menu, #right-menu, .right-panel { background: ' + panel + ' !important; }' +
+        // v0.1.23: the bands themselves are painted once each by frameCss — nothing more here, so
+        // no inner layer doubles the glass.
+
         // WHY on a layer behind each panel, not the panel (v0.1.9): a backdrop-filter makes its
         // element the frame of every position:fixed menu inside it, so the right panel's menus
         // (the slide background's "Select picture", among others) opened ~1400px to the right,
         // off screen. Each of these four is already positioned (relative/absolute), so the layer
         // fills it exactly; z-index -1 keeps it under the panel's content. The static
         // .right-panel/.statusbar sit inside #right-menu/#statusbar and share their layer.
-        (th.panelsBlur ? '#toolbar .toolbar::before, #statusbar::before, #left-menu::before, #right-menu::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit; backdrop-filter: blur(' + th.panelsBlur + 'px); }' : '');
+        (th.panelsBlur ? '#toolbar::before, #statusbar::before, #left-menu::before, #right-menu::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit; backdrop-filter: blur(' + th.panelsBlur + 'px); }' : '');
     }
     if (slim) {
       css += '#toolbar, #statusbar, .statusbar, #left-menu, #right-menu, .right-panel, .left-panel { display: none !important; }';
