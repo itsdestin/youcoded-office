@@ -55,10 +55,40 @@ case "$PLATFORM" in
   win32-x64)
     # WHY x2t.exe moves into binaries/: the installer keeps it one folder above its DLLs (its app
     # puts that folder on the search path). Windows looks for a program's DLLs in the program's
-    # own folder first, so one flat folder needs no search-path setup from YouCoded. Its
-    # DoctRenderer.config names files beside it, so it runs from any folder.
+    # own folder first, so one flat folder needs no search-path setup from YouCoded.
     cp -r "$X/binaries" "$OUT/converter"
     cp "$X/x2t.exe" "$OUT/converter/x2t.exe"
+    # WHY our own DoctRenderer.config (measured on windows-latest, 2026-10-01): the installer's
+    # points x2t's PDF renderer at sdk-word-bundle.js, and every PDF failed with "InitNativeZLib
+    # is not a function". Pointed at the bundle's editors/sdkjs like the Linux and Mac
+    # converters (the same lines euro-office-lite's own app writes at run time), Word, Excel and
+    # PowerPoint documents all print. The unused 32 MB bundle is left out.
+    rm "$OUT/converter/sdk-word-bundle.js"
+    cat > "$OUT/converter/DoctRenderer.config" <<'CONFIG'
+<Settings>
+<file>../editors/sdkjs/common/Native/native.js</file>
+<file>../editors/sdkjs/common/Native/jquery_native.js</file>
+<allfonts>../editors/sdkjs/common/AllFonts.js</allfonts>
+<file>../editors/web-apps/vendor/xregexp/xregexp-all-min.js</file>
+<sdkjs>../editors/sdkjs</sdkjs>
+<dictionaries>../dictionaries</dictionaries>
+<DoctSdk>
+<file>../editors/sdkjs/word/sdk-all-min.js</file>
+<file>../editors/sdkjs/common/libfont/engine/fonts_native.js</file>
+<file>../editors/sdkjs/word/sdk-all.js</file>
+</DoctSdk>
+<PpttSdk>
+<file>../editors/sdkjs/slide/sdk-all-min.js</file>
+<file>../editors/sdkjs/common/libfont/engine/fonts_native.js</file>
+<file>../editors/sdkjs/slide/sdk-all.js</file>
+</PpttSdk>
+<XlstSdk>
+<file>../editors/sdkjs/cell/sdk-all-min.js</file>
+<file>../editors/sdkjs/common/libfont/engine/fonts_native.js</file>
+<file>../editors/sdkjs/cell/sdk-all.js</file>
+</XlstSdk>
+</Settings>
+CONFIG
     ;;
 esac
 
