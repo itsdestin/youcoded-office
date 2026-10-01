@@ -74,6 +74,7 @@ function cellApi() {
       // r false: through history (the editor counts it as a change and autosaves it).
       _addComment(d, r) { log.push(['_addComment', model.name, d.bDocument, r]); model.aComments.push(d); },
       changeComment(id, data) { const i = model.aComments.findIndex((c) => c.nId === id); model.aComments[i] = data; log.push(['change', model.name, id]); },
+      removeComment(id) { const i = model.aComments.findIndex((c) => c.nId === id); if (i >= 0) model.aComments.splice(i, 1); log.push(['remove', model.name, id]); },
     },
   }));
   const api = {
@@ -82,7 +83,8 @@ function cellApi() {
     wb: { getWorksheet: (i) => views[i] },
     asc_getCellEditMode() { return this.editMode; },
     asc_registerCallback() {},
-    asc_removeComment(id) { sheets.forEach((s) => { const i = s.aComments.findIndex((c) => c.nId === id); if (i >= 0) s.aComments.splice(i, 1); }); log.push(['remove', id]); },
+    // Like sdkjs: only the sheet in front (index 0 here) — a comment elsewhere is not reached.
+    asc_removeComment(id) { const s = sheets[0]; const i = s.aComments.findIndex((c) => c.nId === id); if (i >= 0) s.aComments.splice(i, 1); log.push(['remove-active', id]); },
   };
   const win = { Asc: { editor: api, asc_CCommentData: CellComment } };
   return { api, win, sheets, log };
@@ -239,4 +241,35 @@ test('cells convert both ways', async () => {
   assert.deepEqual(JSON.parse(JSON.stringify(cellToRC('AB12'))), { col: 27, row: 11 });
   assert.equal(rcToCell(27, 11), 'AB12');
   assert.equal(cellToRC('12'), null);
+});
+
+test('Excel: a comment on a sheet that is not in front is really deleted', async () => {
+  const c = cellApi();
+  const { send } = await load(c);
+  const { id } = send({ kind: 'add', sheet: 'Notes', cell: 'B2', text: 'Here', author: 'Assistant' });
+  assert.deepEqual(send({ kind: 'delete', id }), { ok: true });
+  assert.equal(c.sheets[1].aComments.length, 0);
+});
+
+test('Excel: a move off a sheet that is not in front leaves no copy behind', async () => {
+  const c = cellApi();
+  const { send } = await load(c);
+  const { id } = send({ kind: 'add', sheet: 'Notes', cell: 'B2', text: 'Here', author: 'Assistant' });
+  assert.equal(send({ kind: 'move', id, sheet: 'Notes', cell: 'C5' }).ok, true);
+  assert.deepEqual(c.sheets[1].aComments.map((x) => [x.nCol, x.nRow]), [[2, 4]]);
+});
+
+test('a move that cannot be made leaves the thread where it was, replies and all', async () => {
+  const w = wordApi();
+  const { send } = await load(w);
+  send({ kind: 'add', quote: 'budget', text: 'Keep me', author: 'Assistant' });
+  send({ kind: 'reply', id: 'c1', text: 'a reply', author: 'You' });
+  assert.deepEqual(send({ kind: 'move', id: 'c1', quote: 'nowhere' }), { ok: false, error: 'quote-not-found' });
+  assert.deepEqual(w.comments.map((x) => [x.Id, x.Data.Text, x.Data.Replies.length]), [['c1', 'Keep me', 1]]);
+  const c = cellApi();
+  const cs = await load(c);
+  const a = cs.send({ kind: 'add', sheet: 'Notes', cell: 'B2', text: 'One', author: 'Assistant' });
+  cs.send({ kind: 'add', sheet: 'Notes', cell: 'C3', text: 'Two', author: 'Assistant' });
+  assert.deepEqual(cs.send({ kind: 'move', id: a.id, sheet: 'Notes', cell: 'C3' }), { ok: false, error: 'cell-has-comment' });
+  assert.deepEqual(c.sheets[1].aComments.map((x) => x.sText), ['One', 'Two']);
 });

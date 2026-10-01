@@ -121,6 +121,11 @@
     }
     return null;
   }
+  // WHY through the comment's own sheet: asc_removeComment only reaches the sheet in front (and the
+  // workbook's comments), so a comment on another sheet stayed while "deleted" was answered.
+  function removeCell(api, found) {
+    api.wb.getWorksheet(found.index).cellCommentator.removeComment(found.comment.asc_getId());
+  }
   function findWord(api, id) {
     var all = api.pluginMethod_GetAllComments() || [];
     for (var i = 0; i < all.length; i++) if (all[i].Id === id) return all[i].Data || {};
@@ -277,17 +282,20 @@
         });
       case 'delete':
         if (cell) {
-          if (!findCellComment(api, op.id)) return { ok: false, error: 'comment-not-found' };
-          api.asc_removeComment(op.id);
-          return { ok: true };
+          var gone = findCellComment(api, op.id);
+          if (!gone) return { ok: false, error: 'comment-not-found' };
+          removeCell(api, gone);
+          return findCellComment(api, op.id) ? { ok: false, error: 'apply-failed' } : { ok: true };
         }
         if (!findWord(api, op.id)) return { ok: false, error: 'comment-not-found' };
         api.pluginMethod_RemoveComments([op.id]);
         return { ok: true };
       case 'move': {
-        // WHY remove-then-add: neither editor moves a comment's anchor through its API. The thread
-        // (text, author, replies, resolved) goes to the new place whole; its id changes, as a
-        // moved comment's id does in the file too.
+        // WHY add-then-remove: neither editor moves a comment's anchor through its API, so the thread
+        // (text, author, replies, resolved) is made again at the new place and only THEN removed from
+        // the old one — a move whose add fails (the quote is not there, the cell has a comment)
+        // leaves the thread where it was instead of losing it. Its id changes, as a moved comment's
+        // id does in the file too.
         if (cell) {
           var f = findCellComment(api, op.id);
           if (!f) return { ok: false, error: 'comment-not-found' };
@@ -296,39 +304,19 @@
             Text: c.sText, UserName: c.sUserName, Time: c.sTime || localNow(), Solved: c.bSolved,
             Replies: (c.aReplies || []).map(function (r) { return { Text: r.sText, UserName: r.sUserName, Time: r.sTime }; }),
           };
-          var rc = cellToRC(op.cell), to = sheetIndex(api, op.sheet);
-          if (!rc) return { ok: false, error: 'invalid-cell' };
-          if (to < 0) return { ok: false, error: 'sheet-not-found' };
-          if (api.wb.getWorksheet(to).cellCommentator.getComment(rc.col, rc.row, false, true)) return { ok: false, error: 'cell-has-comment' };
-          api.asc_removeComment(op.id);
-          return addCell(api, op, moved);
+          var added = addCell(api, op, moved);
+          if (added.ok) removeCell(api, f);
+          return added;
         }
         var d = findWord(api, op.id);
         if (!d) return { ok: false, error: 'comment-not-found' };
-        // Found first, so a quote that is not there leaves the comment where it was.
-        var probe = checkQuote(api, op.quote);
-        if (probe) return probe;
-        api.pluginMethod_RemoveComments([op.id]);
-        return addWord(api, op, { Text: d.Text, UserName: d.UserName, Time: d.Time, Solved: d.Solved, Replies: d.Replies || [] });
+        var copy = addWord(api, op, { Text: d.Text, UserName: d.UserName, Time: d.Time, Solved: d.Solved, Replies: d.Replies || [] });
+        if (copy.ok) api.pluginMethod_RemoveComments([op.id]);
+        return copy;
       }
     }
     return { ok: false, error: 'unknown-op' };
   }
-  function checkQuote(api, quote) {
-    var ld = api.private_GetLogicDocument && api.private_GetLogicDocument();
-    if (!ld || !quote) return { ok: false, error: 'quote-not-found' };
-    var found = false;
-    try {
-      var ss = new (editorWindow().AscCommon.CSearchSettings)();
-      ss.put_Text(String(quote));
-      ss.put_MatchCase(true);
-      found = Object.keys(ld.Search(ss).Elements || {}).length > 0;
-    } finally {
-      try { if (typeof ld.ClearSearch === 'function') ld.ClearSearch(); } catch (e) { /* nothing highlighted */ }
-    }
-    return found ? null : { ok: false, error: 'quote-not-found' };
-  }
-
   function answer(id, result) { window.parent.postMessage({ type: 'yc:office-comments-result', id: id, result: result }, '*'); }
 
   function run(id, op) {
