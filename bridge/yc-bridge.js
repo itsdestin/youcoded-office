@@ -440,10 +440,30 @@
       '#editor-container > #editor_sdk:has(> #id_main_parent) { background: ' + o.panel + I + '; }' +
       '#editor-container > #editor_sdk:has(> #id_main_parent) { overflow: visible' + I + '; }' +
       '#editor-container:has(> #editor_sdk > #id_main_parent) { background: transparent' + I + '; }' +
+      // Fix round 1: the slide area's own gaps (the 4px between the slide and its notes) showed
+      // the frame colour through it — a band across the hole. They are the desk's colour now.
+      '#id_main_parent { background-color: ' + (o.wallpaper ? 'transparent' : (t.canvas || t.panel)) + I + '; }' +
       '#editor-container > #editor_sdk:not(:has(> #id_main_parent)), .layout-ct.vbox > #editor_sdk, #id_main_parent { position: relative' + I + '; overflow: hidden' + I + '; }' +
       HOLES.split(', ').map(function (s) { return s + '::after'; }).join(', ') +
       ' { content: ""' + I + '; position: absolute' + I + '; inset: 0' + I + '; z-index: 1000' + I + '; pointer-events: none' + I + ';' +
       ' border-radius: ' + lg + I + '; box-shadow: 0 0 0 ' + lg + ' ' + o.panel + ', inset 0 0 0 1px ' + t.edge + I + '; }' +
+      // Fix round 1 (Destin, 2026-10-01: "stray straight lines that poke past rounded corners"):
+      // a hole draws no border of its own — the slide area's 1px left border ran straight past
+      // the hole's rounded corners, top and bottom. The hole's outline is the layer's alone.
+      HOLES + ' { border: 0' + I + '; }' +
+      // ...and the presentation's notes divider (an inline 1px border-top across the whole slide
+      // area) is drawn inset by the radius at each end, so it never meets the rounded sides; with
+      // the notes turned off its 4px stub sits on the hole's bottom edge, and draws no line at all.
+      '#id_bottom_pannels_container { border-top-color: transparent' + I + '; background-image: linear-gradient(' + t.edge + ', ' + t.edge + ')' + I + ';' +
+      ' background-size: calc(100% - 2 * ' + lg + ') 1px' + I + '; background-position: top center' + I + '; background-repeat: no-repeat' + I + '; }' +
+      '#id_bottom_pannels_container[style*="height: 4px"] { background-image: none' + I + '; }' +
+      // Fix round 1 (Destin: "the bottom of the inner/outer containers touch each other"): with
+      // the status bar turned off (View → Status bar, remembered between documents) nothing of the
+      // frame was left under the hole, so its bottom edge sat on YouCoded's card edge. The editor
+      // is then laid out 8px shorter — the same gap the frame keeps beside the hole — and a strip
+      // of the frame colour fills those 8px.
+      'body:has(#statusbar[style*="display: none"]) #viewport { height: calc(100% - 8px)' + I + '; bottom: auto' + I + '; }' +
+      'body:has(#statusbar[style*="display: none"])::after { content: ""' + I + '; position: fixed' + I + '; left: 0' + I + '; right: 0' + I + '; bottom: 0' + I + '; height: 8px' + I + '; background: ' + o.panel + I + '; pointer-events: none' + I + '; }' +
       // The presentation's #editor_sdk holds the hole and must not be cut itself.
       '#editor-container > #editor_sdk:has(> #id_main_parent)::after { content: none' + I + '; }' +
       // The selected strip item: one step down the depth ladder, the medium radius, like the File

@@ -383,3 +383,22 @@ test('the File tab: list in the frame, page as the hole, content on YouCoded car
   assert.match(open, /box-shadow: none/);
   assert.doesNotMatch(css, /inset 3px 0 0 #ff0000/);
 });
+
+// Fix round 1 (Destin, 2026-10-01): "the bottom of the inner/outer containers touch each other";
+// "stray straight lines that poke past rounded corners".
+test('with the status bar off the hole keeps its bottom gap, and no straight line runs past its corners', async () => {
+  const { post, tick, head } = await load();
+  post({ type: 'yc:office-theme', theme: theme({ tokens: { ...theme().tokens, 'radius-lg': '14px' } }) });
+  tick();
+  const css = cssOf(head);
+  // The editor is laid out 8px shorter when the status bar is hidden, and the frame fills the gap.
+  assert.ok(ruleFor(css, 'body:has(#statusbar[style*="display: none"]) #viewport').some((r) => /height: calc\(100% - 8px\)/.test(r)));
+  assert.ok(ruleFor(css, 'body:has(#statusbar[style*="display: none"])::after').some((r) => /height: 8px/.test(r) && /background: rgba\(17,17,17,1\)/.test(r)));
+  // The holes draw no border of their own (the slide area's left border ran past both corners).
+  assert.ok(ruleFor(css, '#id_main_parent').some((r) => /border: 0/.test(r)));
+  // The notes divider is inset by the radius at both ends, and gone when the notes are collapsed.
+  const divider = ruleFor(css, '#id_bottom_pannels_container').find((r) => r.includes('background-size'));
+  assert.match(divider, /border-top-color: transparent/);
+  assert.match(divider, /background-size: calc\(100% - 2 \* 14px\) 1px/);
+  assert.ok(ruleFor(css, '#id_bottom_pannels_container[style*="height: 4px"]').some((r) => /background-image: none/.test(r)));
+});
