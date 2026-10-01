@@ -19,8 +19,9 @@
   var STYLE_ID = 'yc-office-theme';
 
   // ── No unload veto from the editor ──
-  // WHY: the host (YouCoded) saves every open document before its window closes and asks the
-  // person itself when a save failed (Review / Close anyway). The editor's own "leave page?"
+  // WHY: the host (YouCoded) keeps every edit in a recovery journal, starts the save of unsaved
+  // changes as a window closes, and itself lists unsaved files before a quit or the last window's
+  // close (its unsaved-files prompt). The editor's own "leave page?"
   // veto (a beforeunload handler that fires while the document is modified) cannot be answered
   // inside YouCoded — it silently cancelled the window close, or forced the host to override
   // every veto, which also dropped the host's own guard for unsaved text-file edits. So in every

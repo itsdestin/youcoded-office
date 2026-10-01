@@ -124,3 +124,15 @@ test('opening a document goes through the recovery check', async () => {
   assert.doesNotMatch(js, /var b64data = await invoke\('open_file'/);
   await rm(dir, { recursive: true, force: true });
 });
+
+// v0.1.27: a pattern found twice means upstream changed shape; patching only the first copy would
+// leave the second running the editor's own behaviour, so the build stops instead.
+test('the patch stops when a pattern it replaces appears more than once', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'yco-patch-dup-'));
+  await writeFile(path.join(dir, 'index.html'), '<html><head></head><head></head></html>');
+  await assert.rejects(
+    run(process.execPath, [path.resolve(import.meta.dirname, '..', 'build', 'patch.mjs'), dir]),
+    (e) => /pattern found more than once in index\.html/.test(e.stderr),
+  );
+  await rm(dir, { recursive: true, force: true });
+});

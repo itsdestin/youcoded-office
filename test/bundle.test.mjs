@@ -138,3 +138,88 @@ test('x2t writes a PDF with its text drawn, using font data it makes itself', as
   assert.ok(real > 0, 'the PDF draws real glyphs');
   await rm(tmp, { recursive: true, force: true });
 });
+
+// ── Every upstream name the add-on hooks or hides is still in the shipped editor (v0.1.27) ──
+// WHY: yc-bridge.js, yc-early.js and yc-comments.js reach into sdkjs and web-apps by name — a
+// function they replace, a field they read, an id whose element they hide. Each hook guards itself
+// ("not this editor: keep its own behaviour"), so after an upstream bump a renamed one fails
+// silently: autosave back on its own timer, the external-links prompt back, a File-tab item that
+// cannot work showing again. This fails the build instead, naming what moved.
+const SDK = { word: 'word', cell: 'cell', slide: 'slide' };
+async function sdkText(kind) {
+  const d = path.join(B, 'editors', 'sdkjs', SDK[kind]);
+  return (await readFile(path.join(d, 'sdk-all-min.js'), 'utf8')) + (await readFile(path.join(d, 'sdk-all.js'), 'utf8'));
+}
+// Names used in every editor's sdkjs (yc-bridge.js autosave, save, skin and pictures; yc-early.js
+// external links and the canvas scrollbars; yc-comments.js for Word and PowerPoint).
+const SDK_ALL = [
+  'intervalWaitAutoSave', 'autoSaveGapFast', '_autoSave', 'lastSaveTime', 'LastUserSavedIndex',
+  'DesktopOfflineAppDocumentStartSave', 'DesktopOfflineAppDocumentEndSave', 'asc_nativeGetFile',
+  'sync_EndAction', 'c_oAscAsyncActionType', 'c_oAscAsyncAction', 'asc_Save', 'isDocumentModified',
+  'asc_setSkin', '_addImageUrl', 'GetDropFiles', 'retinaPixelRatio',
+  'baseEditorsApi', 'onNeedUpdateExternalReferenceOnOpen',
+  'ScrollObject', 'ScrollSettings', '_drawScroll', 'showArrows', 'scrollerColor', 'scrollerHoverColor',
+  'scrollerActiveColor', 'canvasW', 'canvasH', 'maxScrollX', 'maxScrollY', 'isVerticalScroll', 'isHorizontalScroll',
+  'pluginMethod_GetAllComments', 'pluginMethod_AddComment', 'pluginMethod_ChangeComment', 'pluginMethod_RemoveComments',
+  'asc_registerCallback', 'private_GetLogicDocument',
+];
+// The spreadsheet editor only: its external-links timer, its print choices, and the comment model
+// yc-comments.js reads and changes sheet by sheet.
+const SDK_CELL = [
+  'initExternalReferenceUpdateTimer', 'WorkbookView', 'AscDesktopEditor_PrintOptions',
+  'wbModel', 'getWorksheet', 'cellCommentator', 'removeComment', 'changeComment', 'isLockedComment', '_addComment',
+  'aComments', 'aReplies', 'sGuid', 'sOOTime', 'sTime', 'sText', 'sUserName', 'bSolved', 'nCol', 'nRow',
+  'asc_getCellEditMode',
+];
+// Word and PowerPoint only: fit-to-width zoom and rulers (yc-bridge.js slim mode).
+const SDK_WORD_SLIDE = ['zoomFitToWidth', 'zoomCustomMode', 'WordControl', 'm_nZoomValue', 'asc_SetViewRulers'];
+// bridge.js (euro-office-lite's desktop shim) names yc-bridge.js and patch.mjs depend on.
+const BRIDGE = ['AscDesktopEditor', '_isPrinting', 'LocalFileSave', 'DesktopOfflineAppDocumentEndSave', '_currentDocType',
+  '_loadEditorBin', '_recoveryEnqueue', '_recoveryMarkModified'];
+
+test('every sdkjs and bridge.js name the add-on hooks is still there', async () => {
+  const missing = [];
+  for (const kind of Object.keys(SDK)) {
+    const js = await sdkText(kind);
+    const names = [...SDK_ALL, ...(kind === 'cell' ? SDK_CELL : SDK_WORD_SLIDE)];
+    for (const n of names) if (!js.includes(n)) missing.push(`sdkjs/${kind}: ${n}`);
+  }
+  const bridge = await readFile(path.join(B, 'editors', 'bridge.js'), 'utf8');
+  for (const n of BRIDGE) if (!bridge.includes(n)) missing.push(`bridge.js: ${n}`);
+  assert.deepEqual(missing, []);
+});
+
+// The ids the add-on styles, hides or presses, read out of yc-bridge.js itself so a new one is
+// covered the day it is added: every `#id` in its code's strings, every getElementById, and the
+// File-tab items it hides (HIDDEN_FILE_ITEMS). Comments are left out (they quote ids for history).
+async function hookedIds() {
+  const code = (await readFile(path.join(import.meta.dirname, '..', 'bridge', 'yc-bridge.js'), 'utf8'))
+    .split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).map((l) => l.replace(/\s\/\/ .*$/, '')).join('\n');
+  const ids = new Set();
+  for (const [, s] of code.matchAll(/'((?:[^'\\\n]|\\.)*)'/g)) {
+    for (const [, id] of s.matchAll(/#([a-zA-Z][\w-]*)/g)) if (!/^[0-9a-f]{3,8}$/i.test(id)) ids.add(id);
+  }
+  for (const [, id] of code.matchAll(/getElementById\('([^']+)'\)/g)) ids.add(id);
+  const hidden = /HIDDEN_FILE_ITEMS = \[([\s\S]*?)\]/.exec(code);
+  assert.ok(hidden, 'HIDDEN_FILE_ITEMS is where the test looks for the hidden File-tab items');
+  for (const [, id] of hidden[1].matchAll(/'([^']+)'/g)) ids.add(id);
+  return ids;
+}
+
+test('every element id the add-on styles, hides or presses is still in the editors', async () => {
+  const E = path.join(B, 'editors');
+  let ui = (await readFile(path.join(E, 'editor-patches.js'), 'utf8')) + (await readFile(path.join(E, 'bridge.js'), 'utf8'));
+  for (const app of await readdir(path.join(E, 'web-apps', 'apps'))) {
+    for (const f of ['app.js', 'code.js', 'index.html']) ui += await readFile(path.join(E, 'web-apps', 'apps', app, 'main', f), 'utf8').catch(() => '');
+  }
+  const ids = await hookedIds();
+  // The ones named in the review that found this gap must be among them (the extraction works).
+  for (const id of ['chart-button-update-data', 'external-links-btn-change', 'external-links-btn-open', 'external-links-btn-update',
+    'file-menu-panel', 'id-print-settings', 'print-combo-printer', 'slot-btn-dt-print-quick', 'fm-btn-suggest', 'left-btn-comments']) {
+    assert.ok(ids.has(id), `yc-bridge.js still names #${id}`);
+  }
+  // Built by name in code: the slim toolbar's buttons (id-toolbar-btn-<command>), and a class it hides.
+  const missing = [...ids].filter((id) => !ui.includes(id));
+  for (const n of ['id-toolbar-btn-', 'btn-quick-print', 'setPrintersInfo']) if (!ui.includes(n)) missing.push(n);
+  assert.deepEqual(missing, []);
+});

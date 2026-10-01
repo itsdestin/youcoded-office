@@ -10,6 +10,10 @@ async function replaceOnce(file, from, to) {
   const p = path.join(dir, file);
   const text = await readFile(p, 'utf8');
   if (!text.includes(from)) { console.error(`patch: pattern not found in ${file}: ${from}`); process.exit(1); }
+  // WHY (v0.1.27): a pattern found twice means upstream changed shape — patching only the first
+  // copy would leave the other running the editor's own behaviour (a second Print path, a second
+  // Save As), silently. The build stops instead, so the pattern is re-checked by hand.
+  if (text.indexOf(from) !== text.lastIndexOf(from)) { console.error(`patch: pattern found more than once in ${file}: ${from}`); process.exit(1); }
   await writeFile(p, text.replace(from, to));
 }
 
