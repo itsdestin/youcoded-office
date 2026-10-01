@@ -266,3 +266,38 @@ test('parts added many times in one frame (a toolbar re-laid out while the windo
   assert.equal(run.length, 1, 'only the entry whose part was added');
   assert.ok(run[0].includes('#slot-btn-compare'));
 });
+
+// v0.1.38 (Destin: "not all elements update properly/quickly when I switch themes" — Word's
+// rulers and tab-stop box kept the dark theme's colours after a switch to a light one).
+test('a theme switch repaints every canvas colour once: the sheet before a light/dark flip, the full skin on a dark-to-dark switch', async () => {
+  const page = await load();
+  const log = [];
+  let current = 'theme-dark';
+  page.editorWin.Common = { UI: { Themes: { currentThemeId: () => current, setTheme: (id) => { log.push(['flip', id, cssOf(page.editorDoc).includes('#fafafa')]); current = id; } } } };
+  page.editorWin.Asc = { editor: { asc_setSkin: (s) => log.push(['skin', s]) } };
+  const dark = { ...theme(), dark: true };
+  page.post({ type: 'yc:office-theme', theme: dark });
+  page.flush();
+  log.length = 0;
+  // Dark to light: the flip finds the NEW sheet in place, and no second repaint follows it.
+  page.post({ type: 'yc:office-theme', theme: { ...theme({ panel: '#fafafa', fg: '#111111', canvas: '#eeeeee' }), dark: false } });
+  page.flush();
+  assert.deepEqual(log.map((e) => e.slice(0, 1)), [['flip']]);
+  assert.deepEqual(log[0], ['flip', 'theme-light', true], 'the light sheet is written before the flip');
+  // Dark to dark (no flip): one skin call carrying the rulers' colours too, from the theme.
+  current = 'theme-dark';
+  page.post({ type: 'yc:office-theme', theme: dark });
+  page.flush();
+  log.length = 0;
+  page.post({ type: 'yc:office-theme', theme: { ...theme({ panel: '#202020', inset: '#303030', edge: '#404040' }), dark: true } });
+  page.flush();
+  assert.equal(log.length, 1);
+  const [kind, skin] = log[0];
+  assert.equal(kind, 'skin');
+  assert.equal(skin['canvas-ruler-background'], 'rgba(32,32,32,1)');
+  assert.equal(skin['canvas-ruler-margins-background'], '#303030');
+  assert.equal(skin['canvas-ruler-border'], '#404040');
+  assert.equal(skin['background-toolbar'], 'rgba(32,32,32,1)', 'the slide list');
+  assert.equal(skin['canvas-cell-title-background'], '#202020', 'sheet headers');
+  assert.ok(!('font-family-base' in skin) && !('border-sidemenu' in skin), 'colours only');
+});

@@ -1050,7 +1050,9 @@
     return typeof optionsJson === 'string' ? optionsJson : '';
   };
 
-  function buildCss(th) {
+  // The editor's own CSS variables for a theme (buildCss puts them on :root; skinFor hands the
+  // canvas ones to the drawing code).
+  function themeVars(th) {
     var t = th.tokens;
     var glass = th.wallpaper ? Math.max(0.35, Math.min(1, th.panelsOpacity || 0.6)) : 1;
     var panel = rgba(t.panel, glass);
@@ -1121,6 +1123,16 @@
       '--border-radius-window': t['radius-lg'], '--border-radius-checkbox': 'min(' + (t['radius-sm'] || '4px') + ', 4px)',
       '--font-family-base': t['font-sans'], '--font-family-base-custom': t['font-sans'],
     };
+    return v;
+  }
+  function buildCss(th) {
+    var t = th.tokens;
+    var glass = th.wallpaper ? Math.max(0.35, Math.min(1, th.panelsOpacity || 0.6)) : 1;
+    var panel = rgba(t.panel, glass);
+    var thumb = t['scrollbar-thumb'] || t.edge, thumbHover = t['scrollbar-hover'] || t['fg-faint'] || t.edge;
+    var tile = 'min(' + (t['radius-sm'] || '4px') + ', 3px)';
+    var shadow = th.dark ? '0.45' : '0.16';
+    var v = themeVars(th);
     var decl = '';
     for (var k in v) if (v[k]) decl += k + ':' + v[k] + ' !important;';
     var css = ':root, body, body[class] {' + decl + '}' +
@@ -1155,32 +1167,24 @@
   // dark YouCoded themes (Midnight → Halftone) changed neither, so the canvases kept the old
   // theme's colours. So each frame's editor is handed exactly these colours whenever they change
   // (asc_setSkin with no name or type keeps the editor's own theme and only replaces them).
-  var SKIN_KEYS = [
-    'canvas-page-border', 'canvas-scroll-thumb', 'canvas-scroll-thumb-hover', 'canvas-scroll-thumb-pressed',
-    'canvas-scroll-thumb-border', 'canvas-scroll-thumb-border-hover', 'canvas-scroll-thumb-border-pressed',
-    'canvas-scroll-thumb-target', 'canvas-scroll-thumb-target-hover', 'canvas-scroll-thumb-target-pressed',
-    'canvas-scroll-arrow', 'canvas-scroll-arrow-hover', 'canvas-scroll-arrow-pressed',
-    'canvas-cell-title-background', 'canvas-cell-title-background-hover', 'canvas-cell-title-background-selected',
-    'canvas-cell-title-border', 'canvas-cell-title-border-hover', 'canvas-cell-title-border-selected', 'canvas-cell-title-text',
-  ];
+  // v0.1.38 (Destin, 2026-10-01: "not all elements update properly/quickly when I switch themes" —
+  // after a dark-to-light switch Word's rulers and tab-stop box kept the dark colours): the skin
+  // handed over was only the scrollbar, page-outline and sheet-header colours, and the rulers,
+  // slide-list and splitter colours came from the editor reading the CSS variables when it flips
+  // light/dark — which it did before the new sheet was written, so it read the OLD theme's
+  // (measured in the rig: RulerLight stayed #1e1f24 after a switch to a light theme). Now every
+  // colour variable the drawing code reads (sdkjs updateGlobalSkinColors maps them) goes over,
+  // straight from the theme, and the sheet is written before the flip (applyTo).
+  var SKIN_VARS = /^--(canvas-|background-(normal|toolbar)$|border-(toolbar|divider|regular-control|preview-hover|preview-select)$|text-normal(-pressed)?$|highlight-button-(hover|pressed)$)/;
   function skinFor(th) {
-    var t = th.tokens, thumb = t['scrollbar-thumb'] || t.edge, hover = t['scrollbar-hover'] || t['fg-faint'] || t.edge;
-    var skin = {
-      'canvas-page-border': t.edge,
-      'canvas-scroll-thumb': thumb, 'canvas-scroll-thumb-hover': hover, 'canvas-scroll-thumb-pressed': hover,
-      'canvas-scroll-thumb-border': thumb, 'canvas-scroll-thumb-border-hover': hover, 'canvas-scroll-thumb-border-pressed': hover,
-      'canvas-scroll-thumb-target': thumb, 'canvas-scroll-thumb-target-hover': hover, 'canvas-scroll-thumb-target-pressed': hover,
-      'canvas-scroll-arrow': t['fg-muted'], 'canvas-scroll-arrow-hover': t.fg, 'canvas-scroll-arrow-pressed': t.fg,
-      'canvas-cell-title-background': t.panel, 'canvas-cell-title-background-hover': t.inset,
-      'canvas-cell-title-background-selected': t.edge, 'canvas-cell-title-border': t.edge,
-      'canvas-cell-title-border-hover': t.edge, 'canvas-cell-title-border-selected': t.edge,
-      'canvas-cell-title-text': t['fg-dim'] || t.fg,
-    };
-    // The track behind the thumb is the desk; a wallpaper theme's see-through desk has no colour
-    // to hand over, so the editor keeps its own there.
-    if (!th.wallpaper && t.canvas) skin['canvas-background'] = t.canvas;
-    var out = {};
-    SKIN_KEYS.concat(['canvas-background']).forEach(function (k) { if (skin[k]) out[k] = skin[k]; });
+    var v = themeVars(th), out = {};
+    for (var k in v) {
+      var val = v[k];
+      // Only colours: a see-through desk (wallpaper) has no colour to hand over — the editor keeps
+      // its own there, and yc-early.js clears it rather than painting it (v0.1.33).
+      if (!SKIN_VARS.test(k) || typeof val !== 'string' || !/^(#|rgb)/.test(val)) continue;
+      out[k.slice(2)] = val;
+    }
     return out;
   }
   function pushSkin(win) {
@@ -1211,15 +1215,6 @@
       var l = doc.createElement('link'); l.rel = 'stylesheet'; l.href = href; l.setAttribute('data-yc-font', href);
       doc.head.appendChild(l);
     });
-    // Light or dark editor base, so its icon set matches the band it sits on.
-    // WHY every pass, not once: setTheme silently ignores a theme id until the
-    // editor has registered its themes, which happens after this frame appears
-    // (found 2026-09-28: Halftone kept dark icons on a dark band).
-    try {
-      var Themes = win.Common && win.Common.UI && win.Common.UI.Themes;
-      var want = latest.dark ? 'theme-dark' : 'theme-light';
-      if (Themes && Themes.currentThemeId && Themes.currentThemeId() !== want) Themes.setTheme(want);
-    } catch (e) { /* no theme API in this frame: the variables still apply */ }
     // Escape with nothing of the editor's own open (no menu, no dialog) goes to
     // the app, like a YouCoded page's Escape — the host closes its top layer.
     if (!doc.__ycEsc) {
@@ -1232,7 +1227,6 @@
         if (!busy) window.parent.postMessage({ type: 'yc:office-esc' }, '*');
       }, true);
     }
-    pushSkin(win);
     // Fix round 2: the canvas scrollbars (yc-early.js drawSlim) keep their thumb clear of the
     // document area's rounded corners; they need the theme's large radius to know how far.
     try { win.__ycScrollInset = (parseFloat(latest.tokens && latest.tokens['radius-lg']) || 12); } catch (e) { /* not ours */ }
@@ -1242,9 +1236,30 @@
     var style = doc.getElementById(STYLE_ID);
     if (!style) { style = doc.createElement('style'); style.id = STYLE_ID; doc.head.appendChild(style); }
     var th = themeFor();
-    if (style.__ycCss === th.css && style.textContent === th.css) return;
-    style.textContent = th.css;
-    style.__ycCss = th.css;
+    var fresh = !(style.__ycCss === th.css && style.textContent === th.css);
+    if (fresh) {
+      style.textContent = th.css;
+      style.__ycCss = th.css;
+    }
+    // Light or dark editor base, so its icon set matches the band it sits on.
+    // WHY every pass, not once: setTheme silently ignores a theme id until the
+    // editor has registered its themes, which happens after this frame appears
+    // (found 2026-09-28: Halftone kept dark icons on a dark band).
+    // WHY after the sheet is written (v0.1.38): the flip re-reads the editor's colours from the CSS
+    // variables, so it must find the new theme's, not the old one's.
+    try {
+      var Themes = win.Common && win.Common.UI && win.Common.UI.Themes;
+      var want = latest.dark ? 'theme-dark' : 'theme-light';
+      // WHY no skin call after a flip: the flip itself reads every canvas colour from the CSS
+      // variables — the new sheet's, since it is written above — and repaints; handing the same
+      // colours over again repainted a sheet a second time (measured: the light/dark switch's
+      // worst frame doubled on a 3000-row workbook).
+      if (Themes && Themes.currentThemeId && Themes.currentThemeId() !== want) { Themes.setTheme(want); win.__ycSkin = themeFor().skinKey; }
+    } catch (e) { /* no theme API in this frame: the variables still apply */ }
+    // The canvases' colours when the theme changed without a flip (dark to dark): one call
+    // repaints the rulers, scrollbars, sheet headers and slide list.
+    pushSkin(win);
+    if (!fresh) return;
     // OnlyOffice positions its bands in script; a resize makes it lay out again without the rows
     // we just hid. WHY only when what is hidden or the font changed (v0.1.31): the resize makes
     // the editor re-lay out and redraw its whole canvas — measured 2026-10-01, most of a theme
