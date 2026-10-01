@@ -220,11 +220,14 @@ test('every element id the add-on styles, hides or presses is still in the edito
   const ids = await hookedIds();
   // The ones named in the review that found this gap must be among them (the extraction works).
   for (const id of ['chart-button-update-data', 'external-links-btn-change', 'external-links-btn-open', 'external-links-btn-update',
-    'file-menu-panel', 'id-print-settings', 'print-combo-printer', 'slot-btn-dt-print-quick', 'fm-btn-suggest', 'left-btn-comments']) {
+    'file-menu-panel', 'id-print-settings', 'print-combo-printer', 'slot-btn-dt-print-quick', 'fm-btn-suggest', 'left-btn-comments',
+    // v0.1.31: the theme controls YouCoded overrules, and the toolbar groups hidden by class.
+    'slot-btn-interface-theme', 'slot-btn-dark-document', 'slot-btn-compare', 'slot-btn-data-from-text']) {
     assert.ok(ids.has(id), `yc-bridge.js still names #${id}`);
   }
   // Built by name in code: the slim toolbar's buttons (id-toolbar-btn-<command>), and a class it hides.
   const missing = [...ids].filter((id) => !ui.includes(id));
-  for (const n of ['id-toolbar-btn-', 'btn-quick-print', 'setPrintersInfo']) if (!ui.includes(n)) missing.push(n);
+  // v0.1.31: File → Advanced settings' theme row is hidden by its class alone (no :has() fallback).
+  for (const n of ['id-toolbar-btn-', 'btn-quick-print', 'setPrintersInfo', '<tr class="themes">', 'separator-theme']) if (!ui.includes(n)) missing.push(n);
   assert.deepEqual(missing, []);
 });

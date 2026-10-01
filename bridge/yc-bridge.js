@@ -222,9 +222,19 @@
     try { doc = win.document; } catch (e) { return; }
     if (!doc || !doc.querySelectorAll) return;
     var dlgs = doc.querySelectorAll('.asc-window.open-dlg');
+    // WHY classes set here (v0.1.31): the sheet used to hide this dialog and its mask with
+    // `body:has(...)` rules, and a body-wide :has() made every style recalculation in the editor
+    // about 23x slower (perf investigation 2026-10-01). The observers below call this the moment a
+    // window is added, shown or removed — before the next paint — so nothing flashes.
+    var encodingUp = false, delimiterUp = false;
     for (var i = 0; i < dlgs.length; i++) {
       var w = dlgs[i];
-      if (w.__ycAccepted || !w.querySelector('#id-codepages-combo') || w.querySelector('#id-delimiters-combo')) continue;
+      var isTxt = !!w.querySelector('#id-codepages-combo'), isCsv = !!w.querySelector('#id-delimiters-combo');
+      if (isTxt) encodingUp = true;
+      if (isCsv) delimiterUp = true;
+      if (!isTxt || isCsv) continue;
+      if (w.classList && !w.classList.contains('yc-txt-dlg')) w.classList.add('yc-txt-dlg');
+      if (w.__ycAccepted) continue;
       if (w.style) w.style.visibility = 'hidden';
       // WHY only once it is shown (fix round 2): OK on a dialog not yet shown would close it
       // before its show() — which would then put it (and its click-blocking mask) up for good.
@@ -235,6 +245,10 @@
       w.__ycAccepted = true;
       ok.click();
     }
+    // The mask goes while an encoding dialog is in the page and no delimiter one is — the same
+    // test the old body rule made; the editor itself removes the window once it is answered.
+    var body = doc.body, maskOff = encodingUp && !delimiterUp;
+    if (body && body.classList && body.classList.contains('yc-txt-mask-off') !== maskOff) body.classList.toggle('yc-txt-mask-off', maskOff);
   }
   // WHY a MutationObserver per editor document (fix round 2): the 150 ms pass alone left the hidden
   // dialog's mask over the editor for up to that long, eating clicks. The observer answers it the
@@ -272,11 +286,128 @@
     blockPeers(win);
     guardUnload(win);
     quietEditor(win);
+    watchDom(win);
     var frames;
     try { frames = win.document.querySelectorAll('iframe'); } catch (e) { return; }
     for (var i = 0; i < frames.length; i++) {
+      watchFrameLoad(frames[i]);
       try { if (frames[i].contentWindow) guardAll(frames[i].contentWindow); } catch (e) { /* cross-origin */ }
     }
+  }
+
+  // ── Classes in place of :has() (v0.1.31) ──
+  // WHY: measured 2026-10-01 (perf investigation): three `body:has(...)` rules in the theme sheet
+  // made every style recalculation in the editor ~23x slower (6.2 ms against 0.27 ms on a 69-page
+  // document), and the editor recalculates style on nearly every caret move, scroll step and
+  // keystroke — it was the main reason scrolling, typing and resizing felt chuggy. Chromium has to
+  // re-check a stylesheet :has() rule on every DOM change near it; a one-off querySelectorAll with
+  // :has() costs nothing afterwards. So the sheet keys on plain classes, and these selectors (the
+  // old rules' own, word for word) are matched from script when the parts they look at are added.
+  // Which rows and menu items printCss hides: the printer, colour, sides and copies rows (each
+  // with the label row above it), the separators, "Print using the system dialog", and "Print
+  // selection" in the right-click menus.
+  var PRINT_ROWS = '#id-print-settings tr:has(#print-combo-printer), #id-print-settings tr:has(+ tr #print-combo-printer),' +
+    ' #id-print-settings tr:has(#print-combo-color-printing), #id-print-settings tr:has(+ tr #print-combo-color-printing),' +
+    ' #id-print-settings tr:has(> td > #print-combo-sides), #id-print-settings tr:has(+ tr > td > #print-combo-sides),' +
+    ' #id-print-settings tr:has(> td > .pages #print-txt-copies), #id-print-settings tr:has(> td #print-txt-copies):not(:has(#print-txt-pages)),' +
+    ' #id-print-settings tr:has(> td > .separator), #id-print-settings tr:has(#print-btn-system-dialog),' +
+    ' .dropdown-menu li:has(> a .menu__icon.btn-print)';
+  // Each: the class, the old rule's selector, and what — when added to the page — can change what
+  // that selector matches (only that entry is matched again then). The comment list redraws an
+  // item when it is resolved or reopened, so the item (or its button) is added again.
+  var TAGS = [
+    // The presentation's #editor_sdk holds the slide list beside the hole (frameCss).
+    ['yc-pe-sdk', '#editor-container > #editor_sdk:has(> #id_main_parent)', '#id_main_parent'],
+    ['yc-pe-ct', '#editor-container:has(> #editor_sdk > #id_main_parent)', '#id_main_parent'],
+    // Compare and Get data, with their separators (polishCss says why).
+    ['yc-hide-group', '.group:has(> #slot-btn-compare), .group:has(> #slot-btn-data-from-text),' +
+      ' .group:has(> #slot-btn-interface-theme):not(:has(> #slot-btn-dark-document))',
+      '#slot-btn-compare, #slot-btn-data-from-text, #slot-btn-interface-theme'],
+    // A resolved thread's text is muted (commentsCss).
+    ['yc-resolved', '.user-comment-item:has(.btn-resolve.comment-resolved)', '.user-comment-item, .btn-resolve'],
+    ['yc-print-hide', PRINT_ROWS, '#id-print-settings, .menu__icon.btn-print'],
+  ];
+  var TAG_TRIGGER = TAGS.map(function (t) { return t[2]; }).join(', ') + ', #statusbar';
+  // due: which TAGS entries to match again (all of them when left out).
+  function tagPass(doc, due) {
+    for (var i = 0; i < TAGS.length; i++) {
+      if (due && !due[i]) continue;
+      var cls = TAGS[i][0], want;
+      try { want = doc.querySelectorAll(TAGS[i][1]); } catch (e) { continue; /* no :has() in this engine */ }
+      var keep = new Set();
+      for (var j = 0; j < want.length; j++) {
+        keep.add(want[j]);
+        // WHY check first: an unchanged class write still counts as a change to the element.
+        if (want[j].classList && !want[j].classList.contains(cls)) want[j].classList.add(cls);
+      }
+      var had = doc.getElementsByClassName ? [].slice.call(doc.getElementsByClassName(cls)) : [];
+      for (var k = 0; k < had.length; k++) if (!keep.has(had[k])) had[k].classList.remove(cls);
+    }
+  }
+  // The status bar turned off (View → Status bar): the editor is laid out 8px shorter (frameCss).
+  // The editor hides it with an inline display: none, so its style attribute alone is watched.
+  function watchStatusbar(win, doc) {
+    var bar = doc.getElementById && doc.getElementById('statusbar');
+    var MO = win.MutationObserver || (typeof MutationObserver !== 'undefined' ? MutationObserver : null);
+    if (!bar || bar.__ycWatch || !doc.body || !doc.body.classList || !MO) return;
+    bar.__ycWatch = true;
+    var sync = function () {
+      var off = String((bar.getAttribute && bar.getAttribute('style')) || '').indexOf('display: none') >= 0;
+      if (doc.body.classList.contains('yc-no-statusbar') === off) return;
+      doc.body.classList.toggle('yc-no-statusbar', off);
+      // The editor lays its bands out in script; the class lands just after it measured them.
+      try { win.dispatchEvent(new win.Event('resize')); } catch (e) { /* not ours */ }
+    };
+    new MO(sync).observe(bar, { attributes: true, attributeFilter: ['style'] });
+    sync();
+  }
+  // One observer per same-origin document, for what appears after the document is drawn (when
+  // the 150 ms pass has stopped, below): parts the classes above key on, frames the editor makes
+  // later (each is guarded at once, as the pass did), and scripts it loads later (sdkjs defines
+  // its save entry point again when its full build arrives — keepTypingDuringSave re-wraps it).
+  function watchDom(win) {
+    var doc;
+    try { doc = win.document; } catch (e) { return; }
+    var MO = win.MutationObserver || (typeof MutationObserver !== 'undefined' ? MutationObserver : null);
+    if (!doc || !doc.documentElement || doc.__ycDomWatch || !MO) return;
+    doc.__ycDomWatch = true;
+    tagPass(doc);
+    watchStatusbar(win, doc);
+    var onScript = function () { keepTypingDuringSave(win); streamEdits(win); quietEditor(win); };
+    // WHY matched in the next animation frame, and only the entries whose parts were added
+    // (measured in the perf rig): dragging the window narrower makes the editor move whole toolbar
+    // groups into its "More" box many times a second, and matching every entry on each move cost
+    // more than the :has() rules had. A frame's callback runs before that frame is painted, so
+    // nothing newly added is ever shown untagged; a group that only moved keeps its class.
+    var due = null;
+    var runDue = function () { var d = due; due = null; if (d) { tagPass(doc, d); watchStatusbar(win, doc); quietEditor(win); } };
+    new MO(function (records) {
+      var frames = false;
+      for (var i = 0; i < records.length; i++) {
+        var added = records[i].addedNodes || [];
+        for (var j = 0; j < added.length; j++) {
+          var n = added[j];
+          if (!n || n.nodeType !== 1) continue;
+          if (n.tagName === 'SCRIPT') { n.addEventListener('load', onScript); continue; }
+          var deep = !!n.firstElementChild;
+          if (n.tagName === 'IFRAME' || (deep && n.getElementsByTagName('iframe').length)) frames = true;
+          if (!(n.matches(TAG_TRIGGER) || (deep && n.querySelector(TAG_TRIGGER)))) continue;
+          var first = !due;
+          due = due || {};
+          for (var k = 0; k < TAGS.length; k++) if (!due[k] && (n.matches(TAGS[k][2]) || (deep && n.querySelector(TAGS[k][2])))) due[k] = true;
+          due.statusbar = true;
+          if (first) { if (win.requestAnimationFrame) win.requestAnimationFrame(runDue); else runDue(); }
+        }
+      }
+      if (frames) { guardAll(window); kick(); }
+    }).observe(doc.documentElement, { childList: true, subtree: true });
+  }
+  // A frame that loads (again) brings a new document: guard and theme it, and watch it draw.
+  var seen = new WeakSet();
+  function watchFrameLoad(f) {
+    if (!f || seen.has(f) || !f.addEventListener) return;
+    seen.add(f);
+    f.addEventListener('load', function () { kick(); schedule(); });
   }
   // ── No "New feature" tips ──
   // WHY: Euro-Office pops "New" onboarding tips over the toolbar (TooltipManager, web-apps
@@ -372,7 +503,6 @@
   guardUnload(window);
   var latest = null;   // last theme posted by the host
   var slim = false;
-  var seen = new WeakSet();
 
   function rgba(color, alpha) {
     var m = /^#([0-9a-f]{6})/i.exec(String(color).trim());
@@ -459,14 +589,15 @@
       '#toolbar .more-box { background: transparent' + I + '; box-shadow: none' + I + '; }' +
       '#toolbar .more-box > .separator { display: none' + I + '; }' +
       '#statusbar, #statusbar .statusbar, #toolbar .toolbar { border: 0' + I + '; }' +
-      // The presentation's slide list sits in the frame, beside the hole.
-      '#editor-container > #editor_sdk:has(> #id_main_parent) { background: ' + o.panel + I + '; }' +
-      '#editor-container > #editor_sdk:has(> #id_main_parent) { overflow: visible' + I + '; }' +
-      '#editor-container:has(> #editor_sdk > #id_main_parent) { background: transparent' + I + '; }' +
+      // The presentation's slide list sits in the frame, beside the hole. WHY classes (v0.1.31): these
+      // and every other rule here once used :has(); TAGS sets the class from script instead.
+      '#editor-container > #editor_sdk.yc-pe-sdk { background: ' + o.panel + I + '; }' +
+      '#editor-container > #editor_sdk.yc-pe-sdk { overflow: visible' + I + '; }' +
+      '#editor-container.yc-pe-ct { background: transparent' + I + '; }' +
       // Fix round 1: the slide area's own gaps (the 4px between the slide and its notes) showed
       // the frame colour through it — a band across the hole. They are the desk's colour now.
       '#id_main_parent { background-color: ' + (o.wallpaper ? 'transparent' : (t.canvas || t.panel)) + I + '; }' +
-      '#editor-container > #editor_sdk:not(:has(> #id_main_parent)), .layout-ct.vbox > #editor_sdk, #id_main_parent { position: relative' + I + '; overflow: hidden' + I + '; }' +
+      '#editor-container > #editor_sdk:not(.yc-pe-sdk), .layout-ct.vbox > #editor_sdk, #id_main_parent { position: relative' + I + '; overflow: hidden' + I + '; }' +
       HOLES.split(', ').map(function (s) { return s + '::after'; }).join(', ') +
       ' { content: ""' + I + '; position: absolute' + I + '; inset: 0' + I + '; z-index: 1000' + I + '; pointer-events: none' + I + ';' +
       ' border-radius: ' + lg + I + '; box-shadow: 0 0 0 ' + lg + ' ' + o.panel + ', inset 0 0 0 1px ' + t.edge + I + '; }' +
@@ -484,11 +615,11 @@
       // the status bar turned off (View → Status bar, remembered between documents) nothing of the
       // frame was left under the hole, so its bottom edge sat on YouCoded's card edge. The editor
       // is then laid out 8px shorter — the same gap the frame keeps beside the hole — and a strip
-      // of the frame colour fills those 8px.
-      'body:has(#statusbar[style*="display: none"]) #viewport { height: calc(100% - 8px)' + I + '; bottom: auto' + I + '; }' +
-      'body:has(#statusbar[style*="display: none"])::after { content: ""' + I + '; position: fixed' + I + '; left: 0' + I + '; right: 0' + I + '; bottom: 0' + I + '; height: 8px' + I + '; background: ' + o.panel + I + '; pointer-events: none' + I + '; }' +
+      // of the frame colour fills those 8px. (v0.1.31: the class comes from watchStatusbar, not :has().)
+      'body.yc-no-statusbar #viewport { height: calc(100% - 8px)' + I + '; bottom: auto' + I + '; }' +
+      'body.yc-no-statusbar::after { content: ""' + I + '; position: fixed' + I + '; left: 0' + I + '; right: 0' + I + '; bottom: 0' + I + '; height: 8px' + I + '; background: ' + o.panel + I + '; pointer-events: none' + I + '; }' +
       // The presentation's #editor_sdk holds the hole and must not be cut itself.
-      '#editor-container > #editor_sdk:has(> #id_main_parent)::after { content: none' + I + '; }' +
+      '#editor-container > #editor_sdk.yc-pe-sdk::after { content: none' + I + '; }' +
       // The selected strip item: one step down the depth ladder, the medium radius, like the File
       // tab's open item and YouCoded's own selected rows.
       '.tool-menu-btns .btn-category { border-radius: ' + (t['radius-md'] || '8px') + I + '; }' +
@@ -629,12 +760,13 @@
       // WHY: Advanced settings stays (its choices apply to the open document), but its
       // "Interface theme" row goes — YouCoded sets the editor's theme from the app's own on every
       // pass, so a pick there snapped straight back.
-      '#file-menu-panel tr.themes, #file-menu-panel tr:has(#fms-cmb-theme) { display: none' + I + '; }' +
+      '#file-menu-panel tr.themes { display: none' + I + '; }' +
       // v0.1.14: Word's TXT encoding dialog is answered for the person (acceptTxtOptions says why);
       // hidden from its first frame so it never flashes. The CSV one has a delimiter and stays.
-      '.asc-window.open-dlg:has(#id-codepages-combo):not(:has(#id-delimiters-combo)) { visibility: hidden' + I + '; }' +
+      // v0.1.31: acceptTxtOptions sets both classes the moment the dialog is added (before paint).
+      '.asc-window.open-dlg.yc-txt-dlg { visibility: hidden' + I + '; }' +
       // ...and its mask never blocks a click while it is up (fix round 2).
-      'body:has(.asc-window.open-dlg #id-codepages-combo):not(:has(.asc-window.open-dlg #id-delimiters-combo)) .modals-mask { visibility: hidden' + I + '; pointer-events: none' + I + '; }' +
+      'body.yc-txt-mask-off .modals-mask { visibility: hidden' + I + '; pointer-events: none' + I + '; }' +
       // v0.1.15 (fix round 2): features that open a file of a kind YouCoded's host never hands the
       // editor (main answers only picture dialogs) are hidden, not left to do nothing. Word: Insert
       // → Text from file; Collaboration → Compare and Combine (a second document); Mail merge
@@ -647,9 +779,16 @@
       // dialog stay). Presentation: Insert → Audio / Video (the
       // host does not offer media, so the editor never builds them; hidden in case a build does).
       // Every editor: the hyperlink dialog's "Select file" button. Each goes with its separator.
-      '#slot-btn-text-from-file, #slot-btn-mailrecepients, #id-right-menu-mail-merge, #slot-btn-insaudio, #slot-btn-insvideo,' +
-      ' .group:has(> #slot-btn-compare), .group:has(> #slot-btn-compare) + .separator,' +
-      ' .group:has(> #slot-btn-data-from-text), .group:has(> #slot-btn-data-from-text) + .separator,' +
+      // v0.1.31 (Destin, 2026-10-01: "remove some of these theme related buttons that won't work
+      // anymore"): View → Interface Theme. YouCoded sets the editor's theme from the app's own on
+      // every theme change, so a pick there was overruled (the same reason File → Advanced
+      // settings' theme row goes, above). Its group goes too where it holds nothing else (sheet,
+      // slides); Word's keeps Dark Document, which only darkens the page and works with any dark
+      // YouCoded theme (checked in the perf rig: readable, kept across dark themes, locked by the
+      // editor itself on light ones).
+      '#slot-btn-interface-theme,' +
+      ' #slot-btn-text-from-file, #slot-btn-mailrecepients, #id-right-menu-mail-merge, #slot-btn-insaudio, #slot-btn-insvideo,' +
+      ' .group.yc-hide-group, .group.yc-hide-group + .separator,' +
       ' #external-links-btn-change, #external-links-btn-open, #external-links-btn-update, #chart-button-update-data,' +
       ' #id-dlg-hyperlink-url .select-button { display: none' + I + '; }' +
       // Fix round 4: Word/PowerPoint chart settings — "Update data" (#chart-button-update-data,
@@ -707,7 +846,7 @@
       card + ' .user-name { ' + font + ' color: ' + t.fg + I + '; font-weight: 500' + I + '; font-size: 12px' + I + '; }' +
       card + ' .user-date { ' + font + ' color: ' + muted + I + '; font-size: 11px' + I + '; }' +
       card + ' .user-message { ' + font + ' color: ' + fg2 + I + '; font-size: 12px' + I + '; margin-top: 2px' + I + '; white-space: pre-wrap' + I + '; }' +
-      card + ':has(.btn-resolve.comment-resolved) .user-message { color: ' + muted + I + '; }' +
+      card + '.yc-resolved .user-message { color: ' + muted + I + '; }' +
       card + ' .user-quote { display: none' + I + '; }' +
       card + ' .reply-arrow { display: none' + I + '; }' +
       card + ' .reply-item-ct { margin-top: 8px' + I + '; padding-left: 4px' + I + '; }' +
@@ -739,13 +878,9 @@
   // printer without asking") goes: every print here asks.
   function printCss() {
     var I = ' !important';
-    return '#id-print-settings tr:has(#print-combo-printer), #id-print-settings tr:has(+ tr #print-combo-printer),' +
-      ' #id-print-settings tr:has(#print-combo-color-printing), #id-print-settings tr:has(+ tr #print-combo-color-printing),' +
-      ' #id-print-settings tr:has(> td > #print-combo-sides), #id-print-settings tr:has(+ tr > td > #print-combo-sides),' +
-      ' #id-print-settings tr:has(> td > .pages #print-txt-copies), #id-print-settings tr:has(> td #print-txt-copies):not(:has(#print-txt-pages)),' +
-      ' #id-print-settings tr:has(> td > .separator), #id-print-settings tr:has(#print-btn-system-dialog),' +
-      ' #print-combo-range li[data-value="2"],' +
-      ' .dropdown-menu li:has(> a .menu__icon.btn-print), #slot-btn-dt-print-quick, .btn-quick-print { display: none' + I + '; }';
+    // The rows are found by PRINT_ROWS and carry .yc-print-hide, set from script (v0.1.31, see TAGS).
+    return '#id-print-settings tr.yc-print-hide, #print-combo-range li[data-value="2"],' +
+      ' .dropdown-menu li.yc-print-hide, #slot-btn-dt-print-quick, .btn-quick-print { display: none' + I + '; }';
   }
 
   // What the print panel chose, for the host (bridge.js's Print, patched in build/patch.mjs). A
@@ -909,9 +1044,12 @@
     var api;
     try { api = (win.Asc && win.Asc.editor) || win.editor; } catch (e) { return; }
     if (!api || typeof api.asc_setSkin !== 'function') return;
-    var skin = skinFor(latest), key = JSON.stringify(skin);
-    if (win.__ycSkin === key) return;
-    try { api.asc_setSkin(skin); win.__ycSkin = key; } catch (e) { /* editor still starting: next pass */ }
+    // WHY only when the colours differ (v0.1.7 dedupe, now off the cache): each call redraws the
+    // canvases. It stays on every colour change, not only light/dark flips — a switch between two
+    // dark themes changes these colours too, and the editor would keep the old ones (v0.1.7).
+    var th = themeFor();
+    if (win.__ycSkin === th.skinKey) return;
+    try { api.asc_setSkin(th.skin); win.__ycSkin = th.skinKey; } catch (e) { /* editor still starting: next pass */ }
   }
 
   function applyTo(win) {
@@ -955,12 +1093,34 @@
     try { win.__ycScrollInset = (parseFloat(latest.tokens && latest.tokens['radius-lg']) || 12); } catch (e) { /* not ours */ }
     var style = doc.getElementById(STYLE_ID);
     if (!style) { style = doc.createElement('style'); style.id = STYLE_ID; doc.head.appendChild(style); }
-    var css = buildCss(latest);
-    if (style.textContent === css) return;
-    style.textContent = css;
-    // OnlyOffice positions its bands in script; a resize makes it lay out again
-    // without the rows we just hid.
-    win.dispatchEvent(new win.Event('resize'));
+    var th = themeFor();
+    if (style.__ycCss === th.css && style.textContent === th.css) return;
+    style.textContent = th.css;
+    style.__ycCss = th.css;
+    // OnlyOffice positions its bands in script; a resize makes it lay out again without the rows
+    // we just hid. WHY only when what is hidden or the font changed (v0.1.31): the resize makes
+    // the editor re-lay out and redraw its whole canvas — measured 2026-10-01, most of a theme
+    // switch's 100-300 ms freeze. A colour-only change (one dark theme to another) moves nothing.
+    if (win.__ycLayout !== th.layout) {
+      win.__ycLayout = th.layout;
+      win.dispatchEvent(new win.Event('resize'));
+    }
+  }
+  // The theme sheet and canvas colours, built once per theme and mode (v0.1.31). WHY: the 26 KB
+  // sheet was rebuilt for every frame on every pass just to find it unchanged. `layout` is what
+  // needs the editor to lay out and redraw: slim mode hides its bands, the font changes their text
+  // widths, and a wallpaper turns the desk see-through (measured in the perf rig: without a redraw
+  // a sheet kept its old scrollbar colours after a switch to a wallpaper theme).
+  var themeCache = null;
+  function themeFor() {
+    if (!themeCache) {
+      var skin = skinFor(latest);
+      themeCache = {
+        css: buildCss(latest), skin: skin, skinKey: JSON.stringify(skin),
+        layout: (slim ? 'slim' : 'full') + '|' + ((latest.tokens && latest.tokens['font-sans']) || '') + '|' + !!latest.wallpaper,
+      };
+    }
+    return themeCache;
   }
 
   // ── Typing keeps working while a save runs (v0.1.20) ──
@@ -1030,7 +1190,7 @@
     try { frames = win.document.querySelectorAll('iframe'); } catch (e) { return; }
     for (var i = 0; i < frames.length; i++) {
       var f = frames[i];
-      if (!seen.has(f)) { seen.add(f); f.addEventListener('load', function () { schedule(); }); }
+      watchFrameLoad(f);
       try { if (f.contentWindow) walk(f.contentWindow); } catch (e) { /* cross-origin */ }
     }
   }
@@ -1175,8 +1335,8 @@
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent) return; // only the host frames us
     var d = e.data || {};
-    if (d.type === 'yc:office-theme' && d.theme && d.theme.tokens) { latest = d.theme; schedule(); }
-    if (d.type === 'yc:office-mode') { slim = !!d.slim; setRulers(); schedule(); }
+    if (d.type === 'yc:office-theme' && d.theme && d.theme.tokens) { latest = d.theme; themeCache = null; schedule(); }
+    if (d.type === 'yc:office-mode') { slim = !!d.slim; themeCache = null; setRulers(); schedule(); }
     if (d.type === 'yc:office-cmd' && typeof d.cmd === 'string') { run(d.cmd); setTimeout(reportState, 50); }
     // WHY: autosave is the host's decision (3 s after the last change), but the save itself must
     // be the EDITOR's own (asc_Save), the same call Ctrl+S makes. sdkjs records where a save it
@@ -1234,7 +1394,25 @@
     clearTimeout(fitTimer);
     fitTimer = setTimeout(fitWidth, 200);
   });
-  setInterval(function () {
+  // ── The pass that finds the editor's frames while they load ──
+  // WHY it stops once the document is drawn (v0.1.31): measured 2026-10-01, each 150 ms pass cost
+  // 2-4 ms of the editor's main thread (15-26 ms of CPU every second per open document, forever),
+  // and a pass landing in a busy frame was a hitch while scrolling. After the document is drawn,
+  // the observers above (watchDom: frames, scripts and panels added later; watchTxtOptions;
+  // watchStatusbar), each frame's load event and the host's theme and mode messages cover what
+  // the pass used to catch. A frame that loads again starts it again (watchFrameLoad), so a
+  // rebuilt editor is guarded, themed and announced as before.
+  var loop = null, looping = false;
+  function kick() {
+    if (looping) return;
+    looping = true;
+    loop = setInterval(pass, 150);
+  }
+  function stopLoop() {
+    looping = false;
+    try { clearInterval(loop); } catch (e) { /* no timers here */ }
+  }
+  function pass() {
     guardAll(window); // editor frames appear late; guard each as soon as it exists
     if (latest) walk(window); // cheap when nothing changed; catches late theme registration
     var now = drawn(window);
@@ -1250,5 +1428,7 @@
       else announce();
     }
     if (!now) announced = false;
-  }, 150);
+    else stopLoop();
+  }
+  kick();
 })();

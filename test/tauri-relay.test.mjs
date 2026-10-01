@@ -68,3 +68,21 @@ test('the print panel\'s printer list is answered here, never asked of the host'
   assert.equal(list[0].name, 'YouCoded');
   assert.equal(posted.length, 0);
 });
+
+// v0.1.31 (perf investigation 2026-10-01): the editor's bridge.js says "modified" about twice per
+// typed character, and "not modified" on every caret move of an unchanged document. Each one cost
+// the app a message, an IPC call to its main process and a redraw. Only a change of the value goes
+// to the host; a repeat is answered here, as the host would (it answers null).
+test('set_document_modified reaches the host only when the value changes', async () => {
+  const { tauri, posted } = await relayPage();
+  const sent = () => posted.filter((m) => m.cmd === 'set_document_modified').map((m) => m.args.modified);
+  for (const v of [false, false, true, true, true, false, false, true]) tauri.core.invoke('set_document_modified', { modified: v });
+  assert.deepEqual(sent(), [false, true, false, true]);
+  // A repeat is answered at once with the host's own answer.
+  assert.equal(await tauri.core.invoke('set_document_modified', { modified: true }), null);
+  assert.equal(sent().length, 4);
+  // Other commands are never held back.
+  tauri.core.invoke('save_changes', { changes: ['a'] });
+  tauri.core.invoke('save_changes', { changes: ['a'] });
+  assert.equal(posted.filter((m) => m.cmd === 'save_changes').length, 2);
+});

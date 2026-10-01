@@ -4,6 +4,7 @@
  * Loaded before bridge.js. */
 (function () {
   var seq = 0, pending = {}, listeners = {}, announced = false;
+  var lastModified = null; // the last "modified" value the host was told (see invoke)
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent) return;
     var d = e.data || {};
@@ -19,6 +20,16 @@
     // the real printers, so the panel gets one stand-in entry (its row is hidden — yc-bridge.js
     // printCss) and nothing is asked of the host.
     if (cmd === 'plugin:printer|get_printers') return Promise.resolve(JSON.stringify([{ name: 'YouCoded', is_default: true }]));
+    // WHY only a change goes to the host (v0.1.31, perf investigation 2026-10-01): bridge.js sends
+    // set_document_modified about twice per typed character, and "false" on every caret move of an
+    // unchanged document; each one cost the app a message, an IPC call to its main process and a
+    // redraw while the person typed. The host only needs the flag's changes (it arms its autosave
+    // from the editor's batches of edits, save_changes), and answers this command with null.
+    if (cmd === 'set_document_modified') {
+      var modified = !!(args && args.modified);
+      if (modified === lastModified) return Promise.resolve(null);
+      lastModified = modified;
+    }
     return new Promise(function (resolve, reject) {
       var id = ++seq; pending[id] = { resolve: resolve, reject: reject };
       window.parent.postMessage({ yc: 'rpc', id: id, cmd: cmd, args: args || {} }, '*');

@@ -243,7 +243,8 @@ test('file features the host cannot serve are hidden, with the TXT dialog\'s mas
   tick();
   const css = cssOf(head);
   for (const sel of ['#slot-btn-text-from-file', '#slot-btn-mailrecepients', '#id-right-menu-mail-merge', '#slot-btn-insaudio', '#slot-btn-insvideo',
-    '.group:has(> #slot-btn-compare)', '.group:has(> #slot-btn-compare) + .separator', '.group:has(> #slot-btn-data-from-text)',
+    // v0.1.31: the groups carry a class set from script (yc-bridge-perf.test.mjs), not :has().
+    '.group.yc-hide-group', '.group.yc-hide-group + .separator',
     '#external-links-btn-change', '#external-links-btn-open', '#external-links-btn-update', '#chart-button-update-data', '#id-dlg-hyperlink-url .select-button']) {
     assert.ok(css.includes(sel), `${sel} is hidden`);
   }
@@ -262,12 +263,12 @@ test('the print panel loses the rows the system print dialog owns, and "selectio
   post({ type: 'yc:office-theme', theme: theme() });
   tick();
   const css = cssOf(head);
-  const rule = /([^{}]*#print-combo-printer[^{}]*)\{ display: none !important; \}/.exec(css);
+  const rule = /([^{}]*tr\.yc-print-hide[^{}]*)\{ display: none !important; \}/.exec(css);
   assert.ok(rule, 'one rule hides them');
   const sel = rule[1];
-  for (const part of ['tr:has(#print-combo-printer)', 'tr:has(+ tr #print-combo-printer)', 'tr:has(#print-combo-color-printing)',
-    'tr:has(> td > #print-combo-sides)', '#print-txt-copies', 'tr:has(#print-btn-system-dialog)',
-    '#print-combo-range li[data-value="2"]', '.dropdown-menu li:has(> a .menu__icon.btn-print)', '#slot-btn-dt-print-quick']) {
+  // v0.1.31: the rows and the menu item carry .yc-print-hide, set from script by the old rules'
+  // own selectors (which rows: yc-bridge-perf.test.mjs).
+  for (const part of ['#id-print-settings tr.yc-print-hide', '#print-combo-range li[data-value="2"]', '.dropdown-menu li.yc-print-hide', '#slot-btn-dt-print-quick']) {
     assert.ok(sel.includes(part), `hides ${part}`);
   }
   // What stays: the range, pages, page setup, and the Print and Print to PDF buttons.
@@ -361,7 +362,7 @@ test('the document desk is one hole: the large radius, one edge line, corners in
   assert.match(hole, /box-shadow: 0 0 0 14px rgba\(17,17,17,1\), inset 0 0 0 1px #333333/);
   assert.match(hole, /pointer-events: none/);
   // The presentation's outer #editor_sdk holds the slide list (frame) and is not cut itself.
-  assert.ok(ruleFor(css, '#editor_sdk:has(> #id_main_parent)::after').some((r) => /content: none/.test(r)));
+  assert.ok(ruleFor(css, '#editor_sdk.yc-pe-sdk::after').some((r) => /content: none/.test(r)));
 });
 
 test('the File tab: list in the frame, page as the hole, content on YouCoded cards, no accent bar', async () => {
@@ -392,8 +393,9 @@ test('with the status bar off the hole keeps its bottom gap, and no straight lin
   tick();
   const css = cssOf(head);
   // The editor is laid out 8px shorter when the status bar is hidden, and the frame fills the gap.
-  assert.ok(ruleFor(css, 'body:has(#statusbar[style*="display: none"]) #viewport').some((r) => /height: calc\(100% - 8px\)/.test(r)));
-  assert.ok(ruleFor(css, 'body:has(#statusbar[style*="display: none"])::after').some((r) => /height: 8px/.test(r) && /background: rgba\(17,17,17,1\)/.test(r)));
+  // (v0.1.31: body.yc-no-statusbar comes from script — yc-bridge-perf.test.mjs.)
+  assert.ok(ruleFor(css, 'body.yc-no-statusbar #viewport').some((r) => /height: calc\(100% - 8px\)/.test(r)));
+  assert.ok(ruleFor(css, 'body.yc-no-statusbar::after').some((r) => /height: 8px/.test(r) && /background: rgba\(17,17,17,1\)/.test(r)));
   // The holes draw no border of their own (the slide area's left border ran past both corners).
   assert.ok(ruleFor(css, '#id_main_parent').some((r) => /border: 0/.test(r)));
   // The notes divider is inset by the radius at both ends, and gone when the notes are collapsed.
