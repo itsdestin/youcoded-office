@@ -402,3 +402,30 @@ test('with the status bar off the hole keeps its bottom gap, and no straight lin
   assert.match(divider, /background-size: calc\(100% - 2 \* 14px\) 1px/);
   assert.ok(ruleFor(css, '#id_bottom_pannels_container[style*="height: 4px"]').some((r) => /background-image: none/.test(r)));
 });
+
+// Fix round 2 (Destin, 2026-10-01): "strange fill/background boundaries"; "highlight/darken the
+// selected home/file/view/etc tab and make them round on fill/hover etc. same for bottom tabs of
+// spreadsheets"; scrollbars that "overlap the rounded corners of their containers".
+test('ribbon and sheet tabs: rounded fill on hover, press and the open tab; the More box is part of the frame', async () => {
+  const { post, tick, head, editorWin } = await load();
+  post({ type: 'yc:office-theme', theme: theme({ tokens: { ...theme().tokens, 'radius-md': '9px', 'radius-lg': '14px', 'fg-2': '#aaaaaa' } }) });
+  tick();
+  const css = cssOf(head);
+  const pill = ruleFor(css, 'li.ribtab::before').find((r) => r.includes('border-radius'));
+  assert.ok(pill.includes('#statusbar_bottom > li.list-item::before'), 'sheet tabs too');
+  assert.match(pill, /border-radius: 9px/);
+  assert.match(pill, /inset: 3px 1px/);
+  assert.ok(ruleFor(css, 'li.ribtab:hover::before').some((r) => /background: #222222/.test(r)), 'hover: inset');
+  assert.ok(ruleFor(css, 'li.ribtab:active::before').some((r) => /background: #333333/.test(r)), 'press: edge');
+  assert.ok(ruleFor(css, 'li.ribtab.active::before').some((r) => /background: #222222/.test(r)), 'open tab: inset');
+  assert.ok(ruleFor(css, 'li.ribtab.active > a').some((r) => /color: #eeeeee/.test(r)), 'open tab: full text colour');
+  assert.match(css, /--highlight-toolbar-tab-underline:transparent/);
+  assert.ok(ruleFor(css, '#statusbar_bottom > li.list-item > span').some((r) => /border: 0/.test(r) && /box-shadow: none/.test(r)), 'no square borders or accent bar');
+  assert.ok(ruleFor(css, 'span:not([style*="background"])').length, 'a sheet colour the person chose stays');
+  assert.ok(ruleFor(css, '#toolbar .more-box').some((r) => /background: transparent/.test(r)));
+  assert.ok(ruleFor(css, '#toolbar .more-box > .separator').some((r) => /display: none/.test(r)));
+  // Scrollbars stop short of rounded corners; the canvas ones learn the radius.
+  assert.ok(ruleFor(css, '::-webkit-scrollbar-track').some((r) => /margin: 6px/.test(r)));
+  assert.ok(ruleFor(css, '.ps-container > .ps-scrollbar-y-rail').some((r) => /max-height: calc\(100% - 12px\)/.test(r)));
+  assert.equal(editorWin.__ycScrollInset, 14);
+});

@@ -149,3 +149,47 @@ test('no answer from the host leaves the editor on its own defaults, and the pag
     assert.equal(p.m.size, 0);
   }
 });
+
+// Fix round 2 (Destin, 2026-10-01): the scrollbars "overlap the rounded corners of their
+// containers", and "elongate/glitch when scrolling a spreadsheet".
+test('a canvas thumb travels a track shortened by the corner radius at both ends', async () => {
+  const a = await editorPage();
+  a.AscCommon = a.AscCommon || {};
+  function ScrollObject() {}
+  a.AscCommon.ScrollObject = ScrollObject;
+  a.__ycScrollInset = 12;
+  const draw = (y) => {
+    const so = new ScrollObject();
+    so.context = fakeCanvas();
+    so.settings = { isVerticalScroll: true, scrollerColor: '#2f7d55' };
+    so.scroller = { x: 1, y, w: 12, h: 80 };
+    so.canvasW = 14; so.canvasH = 600; so.maxScrollY = 500;
+    so._drawScroll(0x2f, 0x2f, 0x2f);
+    const ys = so.context.ops.filter((o) => o[0] === 'moveTo' || o[0] === 'lineTo' || o[0] === 'arcTo').flatMap((o) => (o[0] === 'arcTo' ? [o[2], o[4]] : [o[2]]));
+    return [Math.min(...ys), Math.max(...ys)];
+  };
+  assert.deepEqual(draw(0), [12, 12 + 77], 'at the top: 12px clear of the corner, the thumb scaled to the shorter track');
+  const [, bottom] = draw(520);
+  assert.equal(bottom, 600 - 12, 'at the bottom: 12px clear of the corner');
+});
+
+test('a sheet\'s view counts at least 1000 rows and 52 columns, so its thumbs keep their size', async () => {
+  const a = await editorPage();
+  function WorksheetView() {}
+  WorksheetView.prototype._initRowsCount = function () { const b = this.nRowsCount; this.nRowsCount = this.used + 1; return b !== this.nRowsCount; };
+  WorksheetView.prototype._initColsCount = function () { const b = this.nColsCount; this.setColsCount(this.usedCols + 1); return b !== this.nColsCount; };
+  WorksheetView.prototype.setColsCount = function (n) { this.nColsCount = n; };
+  a.AscCommonExcel = a.AscCommonExcel || {};
+  a.AscCommonExcel.WorksheetView = WorksheetView;
+  const small = new a.AscCommonExcel.WorksheetView();
+  Object.assign(small, { used: 8, usedCols: 5, nRowsCount: 0, nColsCount: 0 });
+  assert.equal(small._initRowsCount(), true);
+  small._initColsCount();
+  assert.equal(small.nRowsCount, 1000);
+  assert.equal(small.nColsCount, 52);
+  const big = new a.AscCommonExcel.WorksheetView();
+  Object.assign(big, { used: 5000, usedCols: 80, nRowsCount: 0, nColsCount: 0 });
+  big._initRowsCount(); big._initColsCount();
+  assert.equal(big.nRowsCount, 5001, 'a bigger sheet keeps its own size');
+  assert.equal(big.nColsCount, 81);
+});

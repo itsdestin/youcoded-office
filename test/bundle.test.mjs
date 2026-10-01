@@ -170,6 +170,8 @@ const SDK_CELL = [
   'wbModel', 'getWorksheet', 'cellCommentator', 'removeComment', 'changeComment', 'isLockedComment', '_addComment',
   'aComments', 'aReplies', 'sGuid', 'sOOTime', 'sTime', 'sText', 'sUserName', 'bSolved', 'nCol', 'nRow',
   'asc_getCellEditMode',
+  // v0.1.30: a sheet's view counts at least 1000 rows and 52 columns (yc-early.js steadySheetScroll).
+  'WorksheetView', '_initRowsCount', '_initColsCount', 'nRowsCount', 'nColsCount', 'setColsCount',
 ];
 // Word and PowerPoint only: fit-to-width zoom and rulers (yc-bridge.js slim mode).
 const SDK_WORD_SLIDE = ['zoomFitToWidth', 'zoomCustomMode', 'WordControl', 'm_nZoomValue', 'asc_SetViewRulers'];

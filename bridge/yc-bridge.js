@@ -433,8 +433,31 @@
       // The strips' own edge (--border-sidemenu) and the tools row's rounded under-line.
       '#left-menu .tool-menu-btns, #right-menu .tool-menu-btns, #left-menu .left-panel, #right-menu .right-panel { border: 0' + I + '; }' +
       '#toolbar .box-controls::before, #toolbar .box-controls::after { box-shadow: none' + I + '; border: 0' + I + '; background: transparent' + I + '; }' +
-      // The open ribbon tab keeps no fill of its own; its accent underline says which it is.
-      '#toolbar section.tabs li.ribtab.active { background: transparent' + I + '; }' +
+      // Fix round 2 (Destin, 2026-10-01: "we should highlight/darken the selected home/file/view/etc
+      // tab and make them round on fill/hover etc. same for bottom tabs of spreadsheets"): the
+      // ribbon's tabs and the sheet tabs work like YouCoded's own document tabs (ui/DocumentTabs):
+      // the open one sits on the inset fill in the full text colour, the others are fg-2 and take
+      // the inset fill on hover and the edge fill on press, all with the medium radius. The fill is
+      // a layer inside each tab, 3px clear of the row's edges, so the tab's own box (which the
+      // editor measures) does not change; the editor's square fill, underline and borders go.
+      '#toolbar section.tabs li.ribtab, #statusbar_bottom > li.list-item { position: relative' + I + '; isolation: isolate' + I + '; background: transparent' + I + '; box-shadow: none' + I + '; border: 0' + I + '; }' +
+      '#toolbar section.tabs li.ribtab::after { display: none' + I + '; }' +
+      '#toolbar section.tabs li.ribtab::before, #statusbar_bottom > li.list-item::before { content: ""' + I + '; position: absolute' + I + '; inset: 3px 1px' + I + ';' +
+      ' z-index: -1' + I + '; border-radius: ' + (t['radius-md'] || '8px') + I + '; background: transparent' + I + '; pointer-events: none' + I + '; display: block' + I + '; }' +
+      '#toolbar section.tabs li.ribtab > a, #statusbar_bottom > li.list-item > span { color: ' + (t['fg-2'] || t.fg) + I + '; }' +
+      '#toolbar section.tabs li.ribtab:hover::before, #statusbar_bottom > li.list-item:hover::before { background: ' + t.inset + I + '; }' +
+      '#toolbar section.tabs li.ribtab:active::before, #statusbar_bottom > li.list-item:active::before { background: ' + t.edge + I + '; }' +
+      '#toolbar section.tabs li.ribtab.active::before, #statusbar_bottom > li.list-item.active::before { background: ' + t.inset + I + '; }' +
+      '#toolbar section.tabs li.ribtab.active > a, #statusbar_bottom > li.list-item.active > span { color: ' + t.fg + I + '; font-weight: 500' + I + '; }' +
+      // A sheet tab's own box: no borders, no square fill, no accent bar — unless the person gave the
+      // sheet a colour (the editor sets it inline on the tab), which stays.
+      '#statusbar_bottom > li.list-item > span { border: 0' + I + '; box-shadow: none' + I + '; }' +
+      '#statusbar_bottom > li.list-item > span:not([style*="background"]) { background: transparent' + I + '; }' +
+      // Fix round 2 ("strange fill/background boundaries", the ribbon's More button in its own box):
+      // the overflow "More" box painted the panel a second time (a second shade on a glass theme) and
+      // drew a separator down its left edge. It is part of the frame now.
+      '#toolbar .more-box { background: transparent' + I + '; box-shadow: none' + I + '; }' +
+      '#toolbar .more-box > .separator { display: none' + I + '; }' +
       '#statusbar, #statusbar .statusbar, #toolbar .toolbar { border: 0' + I + '; }' +
       // The presentation's slide list sits in the frame, beside the hole.
       '#editor-container > #editor_sdk:has(> #id_main_parent) { background: ' + o.panel + I + '; }' +
@@ -556,6 +579,12 @@
     // above give them the same thumb colours.
     css += '::-webkit-scrollbar { width: 8px; height: 8px; }' +
       '::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }' +
+      // Fix round 2 (Destin: scrollbars "overlap the rounded corners of their containers"): every
+      // track stops 6px short of its ends, clear of a rounded corner; the menus' own scrollbars
+      // (perfect-scrollbar) likewise, their rail clipped so the thumb never reaches the corner.
+      '::-webkit-scrollbar-track { margin: 6px; }' +
+      '.ps-container > .ps-scrollbar-y-rail { margin-top: 6px' + I + '; max-height: calc(100% - 12px)' + I + '; overflow: hidden' + I + '; border-radius: 3px' + I + '; }' +
+      '.ps-container > .ps-scrollbar-x-rail { margin-left: 6px' + I + '; max-width: calc(100% - 12px)' + I + '; overflow: hidden' + I + '; border-radius: 3px' + I + '; }' +
       '::-webkit-scrollbar-thumb { background: ' + o.thumb + '; border-radius: 4px; }' +
       '::-webkit-scrollbar-thumb:hover { background: ' + o.thumbHover + '; }' +
       '::-webkit-scrollbar-button { display: none; }' +
@@ -767,8 +796,9 @@
       // Hover one step down the depth ladder, press one more (design guide §2.4).
       '--highlight-button-hover': t.inset, '--highlight-button-pressed': t.edge, '--highlight-button-pressed-hover': t.edge,
       '--highlight-header-button-hover': t.inset, '--highlight-header-button-pressed': t.edge,
-      '--highlight-toolbar-tab-underline': t.accent, '--highlight-toolbar-tab-underline-document': t.accent,
-      '--highlight-toolbar-tab-underline-spreadsheet': t.accent, '--highlight-toolbar-tab-underline-presentation': t.accent,
+      // Fix round 2: the open ribbon tab is shown by its fill, like YouCoded's tabs — no underline.
+      '--highlight-toolbar-tab-underline': 'transparent', '--highlight-toolbar-tab-underline-document': 'transparent',
+      '--highlight-toolbar-tab-underline-spreadsheet': 'transparent', '--highlight-toolbar-tab-underline-presentation': 'transparent',
       '--text-normal': t.fg, '--text-normal-pressed': t.fg, '--text-secondary': t['fg-dim'], '--text-tertiary': t['fg-muted'],
       '--text-link': t.link || t.accent, '--text-contrast-background': t.fg,
       '--icon-normal': t.fg, '--icon-normal-pressed': t.fg, '--icon-toolbar-header': t.fg,
@@ -920,6 +950,9 @@
       }, true);
     }
     pushSkin(win);
+    // Fix round 2: the canvas scrollbars (yc-early.js drawSlim) keep their thumb clear of the
+    // document area's rounded corners; they need the theme's large radius to know how far.
+    try { win.__ycScrollInset = (parseFloat(latest.tokens && latest.tokens['radius-lg']) || 12); } catch (e) { /* not ours */ }
     var style = doc.getElementById(STYLE_ID);
     if (!style) { style = doc.createElement('style'); style.id = STYLE_ID; doc.head.appendChild(style); }
     var css = buildCss(latest);

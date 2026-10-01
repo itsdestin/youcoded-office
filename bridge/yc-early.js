@@ -89,6 +89,33 @@
   function quietWorkbookView(View) {
     if (View && View.prototype) View.prototype.initExternalReferenceUpdateTimer = function () {};
   }
+  // ── A sheet's scrollbars keep their size (fix round 2) ──
+  // WHY (Destin, 2026-10-01: the scrollbars "elongate/glitch when scrolling a spreadsheet"): a
+  // sheet's scroll range is only its used rows and columns plus what is on screen, and sdkjs adds
+  // rows as the view reaches the end. So scrolling a small sheet ran the thumb to the bottom of its
+  // track, then the range grew and the thumb jumped back up and changed size — every few wheel
+  // turns (measured in the workbench: 433px → 327px and back up the track). Like a fresh Google
+  // sheet, a sheet's view now counts at least 1000 rows and 52 columns (A–AZ), so the thumb is
+  // small and keeps its size until well past anything a small sheet reaches; a bigger sheet keeps
+  // its own size. Only the view's count changes — the workbook, its used range and what is saved
+  // or printed do not.
+  var MIN_ROWS = 1000, MIN_COLS = 52;
+  function steadySheetScroll(View) {
+    var P = View && View.prototype;
+    if (!P || P.__ycSteady || typeof P._initRowsCount !== 'function' || typeof P._initColsCount !== 'function') return;
+    var rows = P._initRowsCount, cols = P._initColsCount;
+    P._initRowsCount = function () {
+      var before = this.nRowsCount, changed = rows.apply(this, arguments);
+      if (this.nRowsCount < MIN_ROWS) this.nRowsCount = MIN_ROWS;
+      return changed || before !== this.nRowsCount;
+    };
+    P._initColsCount = function () {
+      var before = this.nColsCount, changed = cols.apply(this, arguments);
+      if (this.nColsCount < MIN_COLS && typeof this.setColsCount === 'function') this.setColsCount(MIN_COLS);
+      return changed || before !== this.nColsCount;
+    };
+    P.__ycSteady = true;
+  }
   // ── Slim, rounded scrollbars in the document and sheet canvases (v0.1.7) ──
   // WHY (Destin, 2026-09-28: "all of the scrollbars are unstyled"): sdkjs draws these scrollbars
   // itself, on canvases (common/scroll.js ScrollObject), so CSS cannot reach them. Its own drawing
@@ -142,6 +169,19 @@
       y = Math.round(sc.y + (sc.h - th) / 2); h = th;
       x = Math.max(0, Math.round(sc.x)); w = Math.min(this.canvasW - x, Math.round(sc.w));
     } else return;
+    // Fix round 2 (Destin, 2026-10-01: the scrollbars "overlap the rounded corners of their
+    // containers"): the canvases sit along the document area's rounded edges, so the thumb's whole
+    // travel is squeezed into the track minus the corner radius at each end (the host page's bridge
+    // hands that radius over as __ycScrollInset). It is proportional, so the thumb still moves with
+    // the content and reaches both ends of its shorter track.
+    var inset = Math.max(0, Number(window.__ycScrollInset) || 0) * dpr;
+    if (s.isVerticalScroll) {
+      var LH = this.canvasH, iy = Math.min(inset, LH / 4), ky = (LH - 2 * iy) / LH;
+      y = Math.round(iy + y * ky); h = Math.max(th, Math.round(h * ky));
+    } else {
+      var LW = this.canvasW, ix = Math.min(inset, LW / 4), kx = (LW - 2 * ix) / LW;
+      x = Math.round(ix + x * kx); w = Math.max(th, Math.round(w * kx));
+    }
     if (w <= 0 || h <= 0) return;
     var r = th / 2;
     ctx.beginPath();
@@ -175,5 +215,5 @@
     onDefineWrap(ns, 'ScrollSettings', slimSettings);
     onDefine(ns, 'ScrollObject', slimScroll);
   });
-  onDefine(window, 'AscCommonExcel', function (ns) { onDefine(ns, 'WorkbookView', quietWorkbookView); });
+  onDefine(window, 'AscCommonExcel', function (ns) { onDefine(ns, 'WorkbookView', quietWorkbookView); onDefine(ns, 'WorksheetView', steadySheetScroll); });
 })();
