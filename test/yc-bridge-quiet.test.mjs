@@ -499,3 +499,15 @@ test('wallpaper sheet: scrollbar strips carry the header colour; the gap beside 
   assert.ok(ruleFor(css, '.layout-resizer.after:not([style*="display: none"]) ~ .layout-item:not([id])').some((r) => /box-shadow: -4px 0 0 rgba\(17,17,17,0\.6\)/.test(r)));
   assert.doesNotMatch(css, /:has\(/);
 });
+
+// v0.1.36 (framing sweep): the comments panel is part of the editor's frame, like the other side
+// panels — see-through on a wallpaper theme — and only the comment cards are cards.
+test('the comments panel takes the frame\'s surface: no box of its own around the cards', async () => {
+  const { post, tick, head } = await load();
+  post({ type: 'yc:office-theme', theme: theme({ wallpaper: true }) });
+  tick();
+  const css = cssOf(head);
+  assert.match(css, /#left-panel-comments, #comments-box, #comments-box \.messages-ct, #comments-box \.dataview-ct, #comments-box \.new-comment-ct \{ background: transparent !important; \}/);
+  assert.match(css, /#comments-box \{ border: 0 !important; border-radius: 0 !important; box-shadow: none !important; \}/);
+  assert.doesNotMatch(css, /#comments-box \{ background-color:/);
+});

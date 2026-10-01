@@ -914,9 +914,13 @@
     var css = '';
 
     // ── The pane ──
-    css += '#left-panel-comments { background-color: ' + (t.canvas || t.panel) + I + '; padding: 8px' + I + '; box-sizing: border-box' + I + '; }' +
-      box + ' { background-color: ' + t.panel + I + '; border: 1px solid ' + t.edge + I + '; border-radius: ' + xl + I + '; overflow: hidden' + I + '; box-sizing: border-box' + I + '; }' +
-      box + ' .messages-ct, ' + box + ' .dataview-ct { background-color: ' + t.panel + I + '; }' +
+    // WHY no box of its own (v0.1.36, the framing sweep): the panel sits in the editor's frame, like
+    // the paragraph and cell settings panels beside it, and takes the frame's surface — see-through
+    // on a wallpaper theme. Its own rounded panel-coloured box read as a card inside a card there;
+    // only the comment cards are cards, as in the app's reading-view panel.
+    css += '#left-panel-comments, ' + box + ', ' + box + ' .messages-ct, ' + box + ' .dataview-ct, ' + box + ' .new-comment-ct { background: transparent' + I + '; }' +
+      '#left-panel-comments { padding: 0' + I + '; }' +
+      box + ' { border: 0' + I + '; border-radius: 0' + I + '; box-shadow: none' + I + '; }' +
       '#comments-header { display: flex' + I + '; align-items: center' + I + '; gap: 2px' + I + '; height: 33px' + I + '; padding: 6px 6px 6px 12px' + I + '; box-sizing: border-box' + I + '; border-bottom: 1px solid ' + t.edge + I + '; background: transparent' + I + '; }' +
       '#comments-header label { flex: 1' + I + '; order: 0' + I + '; margin: 0' + I + '; ' + font + ' font-size: 14px' + I + '; font-weight: 600' + I + '; line-height: 20px' + I + '; color: ' + t.fg + I + '; }' +
       '#comments-header > div { float: none' + I + '; margin: 0' + I + '; }' +
