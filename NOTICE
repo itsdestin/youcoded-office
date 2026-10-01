@@ -29,6 +29,21 @@ Licence: GNU Affero General Public License v3.0 (AGPL-3.0).
 Source: https://github.com/delmarguillen/euro-office-lite
 Pinned release: v0.17.21-alpha (see PIN.json)
 
+Converter per platform (converter/ in each bundle)
+--------------------------------------------------
+Each platform's bundle carries the x2t converter and its libraries exactly as
+euro-office-lite's own installer for the pinned release ships them:
+- linux-x64:    Euro-Office-Lite_<release>_amd64.deb   (ONLYOFFICE core 8.2.0)
+- darwin-x64:   Euro-Office-Lite_<release>_x86_64.dmg  (ONLYOFFICE core 8.2.0)
+- darwin-arm64: Euro-Office-Lite_<release>_aarch64.dmg (ONLYOFFICE core 8.2.0)
+- win32-x64:    Euro-Office-Lite_<release>_x64-setup.exe (ONLYOFFICE core 9.4)
+All from https://github.com/delmarguillen/euro-office-lite/releases at the
+pinned release. Their corresponding source is ONLYOFFICE's core
+(https://github.com/ONLYOFFICE/core) at those versions, as built by that
+project; the Windows converter is a newer ONLYOFFICE build than the others,
+so it can read and write a few more formats. The macOS files are re-signed by
+YouCoded's own app build; their content is unchanged.
+
 Fonts (editors/fonts)
 ----------------------
 - Carlito (Regular, Bold, Italic, Bold Italic)

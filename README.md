@@ -21,19 +21,21 @@ spreading it across YouCoded's main app.
 
 ## What a release contains
 
-Each GitHub release publishes `youcoded-office-<version>-linux-x64.tar.gz`
-and `SHA256SUMS`. The tarball, unpacked, is:
+Each GitHub release publishes `youcoded-office-<version>-<platform>.tar.gz` for
+`linux-x64`, `darwin-x64`, `darwin-arm64` and `win32-x64`, and one `SHA256SUMS`.
+Only `converter/` (and `manifest.json`'s `platform`) differs between them. There is
+no `linux-arm64` bundle: euro-office-lite publishes no ARM Linux converter. A tarball, unpacked, is:
 
 ```
-manifest.json          # { version, euroOfficeLite: "<tag>", platform: "linux-x64" }
+manifest.json          # { version, euroOfficeLite: "<tag>", platform: "<platform>" }
 editors/                # the editor UI, built from euro-office-lite source
   index.html
   bridge.js
   tauri-relay.js         # YouCoded's relay (this repo's bridge/tauri-relay.js)
   yc-bridge.js           # YouCoded's theme bridge (this repo's bridge/yc-bridge.js)
   web-apps/  sdkjs/  fonts/  dictionaries/  ...
-converter/              # x2t and its shared libraries, from the release .deb
-  x2t  *.so  AllFonts.js  fonts/  ...
+converter/              # x2t and its libraries, from the same release's installer for that platform
+  x2t (x2t.exe)  *.so / *.dylib / *.dll  AllFonts.js  DoctRenderer.config  fonts/  ...
 templates/
   blank.docx  blank.xlsx  blank.pptx
 LICENSE
@@ -74,10 +76,11 @@ prints from the saved document, which has no selection), nor is quick print. Pag
 
 ## Building
 
-Linux x64 only, for now:
-
 ```bash
-bash build/build-linux.sh
+bash build/build-linux.sh                       # editor UI + linux-x64
+bash build/package-platform.sh darwin-x64       # then each other platform (needs 7-Zip 22+)
+bash build/package-platform.sh darwin-arm64
+bash build/package-platform.sh win32-x64
 ```
 
 Needs Node 22 first on `PATH` (euro-office-lite's grunt build chain calls
@@ -86,12 +89,15 @@ The script clones euro-office-lite at the tag pinned in `PIN.json`, builds
 its frontend from source, pulls `x2t` and the blank templates out of that
 same release's `.deb`, applies this repo's two patches
 (`build/patch.mjs`), and writes `dist/youcoded-office-<version>-linux-x64.tar.gz`
-plus `dist/SHA256SUMS`.
+plus `dist/SHA256SUMS`. `package-platform.sh` reuses that bundle's editors and takes
+`converter/` from the same tag's Mac `.dmg` or Windows installer.
 
-Run the tests against the built bundle:
+Run the tests against the built bundle, and the converter smoke test against any unpacked
+bundle (CI runs it for each platform on its own OS before a release is published):
 
 ```bash
 node --test test/bundle.test.mjs
+node test/smoke-x2t.mjs work/bundle
 ```
 
 ## Corresponding source

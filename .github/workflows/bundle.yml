@@ -17,6 +17,64 @@ jobs:
       # (verified on both Node 22.23.3 and 26.4.0). The glob expands to the
       # real file and runs the same suite.
       - run: node --test test/*.test.mjs
-      - if: startsWith(github.ref, 'refs/tags/')
-        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/SHA256SUMS --title "$GITHUB_REF_NAME" --notes "Built from euro-office-lite $(node -p "require('./PIN.json').euroOfficeLite.tag")"
+      - run: node test/smoke-x2t.mjs work/bundle
+      - uses: actions/upload-artifact@v4
+        with: { name: bundle-linux-x64, path: 'dist/*-linux-x64.tar.gz', retention-days: 7 }
+      # WHY the unpacked bundle too: the Mac and Windows bundles reuse its editors/ and
+      # templates/ (the editor UI is the same on every platform), so it is built only once.
+      - run: tar -C work -czf base.tar.gz bundle
+      - uses: actions/upload-artifact@v4
+        with: { name: base, path: base.tar.gz, retention-days: 1 }
+
+  # The Mac and Windows converters come from euro-office-lite's own installers for the pinned
+  # tag. WHY ubuntu-24.04 here: its 7-Zip (7zz, 23.x) opens the APFS disk images the Mac
+  # installers are; ubuntu-22.04 only carries the older p7zip, which cannot.
+  package:
+    needs: linux
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix: { platform: [darwin-x64, darwin-arm64, win32-x64] }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: base }
+      - run: mkdir -p work && tar -C work -xzf base.tar.gz
+      - run: sudo apt-get update && sudo apt-get install -y 7zip
+      - run: bash build/package-platform.sh ${{ matrix.platform }}
+      - uses: actions/upload-artifact@v4
+        with: { name: 'bundle-${{ matrix.platform }}', path: 'dist/*-${{ matrix.platform }}.tar.gz', retention-days: 7 }
+
+  # WHY run each converter on its own OS: x2t is a native program, and only a real Mac (Intel and
+  # Apple silicon) or Windows machine shows whether it opens, saves and prints there. A bundle
+  # that fails here is never published.
+  smoke:
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: darwin-x64, os: macos-15-intel }
+          - { platform: darwin-arm64, os: macos-14 }
+          - { platform: win32-x64, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - uses: actions/download-artifact@v4
+        with: { name: 'bundle-${{ matrix.platform }}', path: dl }
+      - shell: bash
+        run: mkdir -p b && tar -C b -xzf dl/*.tar.gz && node test/smoke-x2t.mjs b
+
+  release:
+    needs: [linux, smoke]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { pattern: 'bundle-*', path: dist, merge-multiple: true }
+      # WHY the sums are made here: one file covering every platform's bundle.
+      - run: cd dist && sha256sum youcoded-office-*.tar.gz > SHA256SUMS && cat SHA256SUMS
+      - run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/SHA256SUMS --title "$GITHUB_REF_NAME" --notes "Built from euro-office-lite $(node -p "require('./PIN.json').euroOfficeLite.tag")"
         env: { GH_TOKEN: '${{ github.token }}' }
