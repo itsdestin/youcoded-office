@@ -210,6 +210,35 @@
     } catch (e) { /* not definable: the editor keeps its own scrollbars */ }
   }
 
+  // ── The slide list draws no background of its own on a glass theme (fix round 3) ──
+  // WHY (Destin, 2026-10-01: "still dark sharp-cornered background bleeding out around the left
+  // edge of the slides container"): the presentation's slide list repaints its whole background
+  // canvas (#id_thumbnails_background) with the panel colour before drawing the slide outlines.
+  // sdkjs reads that colour from the theme as an opaque colour, so on a glass (wallpaper) theme the
+  // list was a solid block, darker than the see-through frame around it, with square corners
+  // beside the rounded document area. When the host says the theme is glass (the bridge sets
+  // __ycGlassFrame), that one full-canvas background fill clears the canvas instead; the outlines
+  // are still drawn, and the frame's own panel shows through (yc-bridge.js frameCss).
+  function clearThumbsBack(HC) {
+    var P = HC && HC.prototype;
+    if (!P || P.__ycThumbs || typeof P.getContext !== 'function') return;
+    var get = P.getContext;
+    P.getContext = function (kind) {
+      var ctx = get.apply(this, arguments);
+      if (ctx && kind === '2d' && this.id === 'id_thumbnails_background' && !ctx.__ycThumbs) {
+        var fill = ctx.fillRect;
+        ctx.fillRect = function (x, y, w, h) {
+          if (window.__ycGlassFrame && x === 0 && y === 0 && w === this.canvas.width && h === this.canvas.height) return this.clearRect(x, y, w, h);
+          return fill.apply(this, arguments);
+        };
+        ctx.__ycThumbs = true;
+      }
+      return ctx;
+    };
+    P.__ycThumbs = true;
+  }
+  clearThumbsBack(window.HTMLCanvasElement);
+
   onDefine(window, 'AscCommon', function (ns) {
     onDefine(ns, 'baseEditorsApi', quietApi);
     onDefineWrap(ns, 'ScrollSettings', slimSettings);

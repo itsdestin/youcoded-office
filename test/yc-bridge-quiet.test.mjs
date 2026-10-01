@@ -431,3 +431,23 @@ test('ribbon and sheet tabs: rounded fill on hover, press and the open tab; the 
   assert.ok(ruleFor(css, '.ps-container > .ps-scrollbar-y-rail').some((r) => /max-height: calc\(100% - 12px\)/.test(r)));
   assert.equal(editorWin.__ycScrollInset, 14);
 });
+
+// Fix round 3: on a glass theme nothing paints twice beside the presentation's rounded slide area,
+// and the Advanced settings rows the frame makes inert are gone with their group.
+test('glass presentation frame is painted once; Tab style and tab background settings are hidden', async () => {
+  const solid = await load();
+  solid.post({ type: 'yc:office-theme', theme: theme() });
+  solid.tick();
+  assert.doesNotMatch(cssOf(solid.head), /#id_panel_thumbnails_split \{ background/, 'a solid theme keeps its look');
+  assert.equal(solid.editorWin.__ycGlassFrame, false);
+  const { post, tick, head, editorWin } = await load();
+  post({ type: 'yc:office-theme', theme: theme({ wallpaper: true, panelsOpacity: 0.6 }) });
+  tick();
+  const css = cssOf(head);
+  assert.ok(ruleFor(css, '#editor-container > #editor_sdk.yc-pe-sdk').some((r) => /background: transparent/.test(r)), '#editor_sdk paints nothing');
+  assert.ok(ruleFor(css, '#id_panel_thumbnails_split').some((r) => /background: rgba\(17,17,17,0\.6\)/.test(r)), 'the list and its splitter paint the glass once');
+  assert.equal(editorWin.__ycGlassFrame, true);
+  assert.doesNotMatch(css, /:has\(/, 'still no :has() in the theme sheet');
+  const hidden = ruleFor(css, '#file-menu-panel tr.tab-style').find((r) => r.includes('display: none'));
+  for (const s of ['tr.appearance', 'tr.tab-background', 'tr.tab-background + tr.divider-group', '#fms-cmb-tab-style', '#fms-chb-tab-background']) assert.ok(hidden.includes(s), `${s} hidden`);
+});

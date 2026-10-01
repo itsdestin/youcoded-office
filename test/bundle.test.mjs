@@ -175,6 +175,8 @@ const SDK_CELL = [
 ];
 // Word and PowerPoint only: fit-to-width zoom and rulers (yc-bridge.js slim mode).
 const SDK_WORD_SLIDE = ['zoomFitToWidth', 'zoomCustomMode', 'WordControl', 'm_nZoomValue', 'asc_SetViewRulers'];
+// v0.1.32: the slide list's background canvas (yc-early.js clearThumbsBack), checked in the slide sdkjs below.
+const SDK_SLIDE = ['id_thumbnails_background', 'drawThumbnailsBorders', 'BackgroundColorThumbnails'];
 // bridge.js (euro-office-lite's desktop shim) names yc-bridge.js and patch.mjs depend on.
 const BRIDGE = ['AscDesktopEditor', '_isPrinting', 'LocalFileSave', 'DesktopOfflineAppDocumentEndSave', '_currentDocType',
   '_loadEditorBin', '_recoveryEnqueue', '_recoveryMarkModified'];
@@ -183,7 +185,7 @@ test('every sdkjs and bridge.js name the add-on hooks is still there', async () 
   const missing = [];
   for (const kind of Object.keys(SDK)) {
     const js = await sdkText(kind);
-    const names = [...SDK_ALL, ...(kind === 'cell' ? SDK_CELL : SDK_WORD_SLIDE)];
+    const names = [...SDK_ALL, ...(kind === 'cell' ? SDK_CELL : SDK_WORD_SLIDE), ...(kind === 'slide' ? SDK_SLIDE : [])];
     for (const n of names) if (!js.includes(n)) missing.push(`sdkjs/${kind}: ${n}`);
   }
   const bridge = await readFile(path.join(B, 'editors', 'bridge.js'), 'utf8');
@@ -222,7 +224,9 @@ test('every element id the add-on styles, hides or presses is still in the edito
   for (const id of ['chart-button-update-data', 'external-links-btn-change', 'external-links-btn-open', 'external-links-btn-update',
     'file-menu-panel', 'id-print-settings', 'print-combo-printer', 'slot-btn-dt-print-quick', 'fm-btn-suggest', 'left-btn-comments',
     // v0.1.31: the theme controls YouCoded overrules, and the toolbar groups hidden by class.
-    'slot-btn-interface-theme', 'slot-btn-dark-document', 'slot-btn-compare', 'slot-btn-data-from-text']) {
+    'slot-btn-interface-theme', 'slot-btn-dark-document', 'slot-btn-compare', 'slot-btn-data-from-text',
+    // v0.1.32: the Advanced settings rows the frame makes inert, and the slide list's splitter.
+    'fms-cmb-tab-style', 'fms-chb-tab-background', 'id_panel_thumbnails_split']) {
     assert.ok(ids.has(id), `yc-bridge.js still names #${id}`);
   }
   // Built by name in code: the slim toolbar's buttons (id-toolbar-btn-<command>), and a class it hides.

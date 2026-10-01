@@ -193,3 +193,26 @@ test('a sheet\'s view counts at least 1000 rows and 52 columns, so its thumbs ke
   assert.equal(big.nRowsCount, 5001, 'a bigger sheet keeps its own size');
   assert.equal(big.nColsCount, 81);
 });
+
+// Fix round 3 (Destin, 2026-10-01: "dark sharp-cornered background bleeding out around the left
+// edge of the slides container"): on a glass theme the slide list's background fill clears instead.
+test('on a glass theme the slide list\'s full background fill clears the canvas; outlines still draw', async () => {
+  const src = await readFile(path.resolve(import.meta.dirname, '..', 'bridge', 'yc-early.js'), 'utf8');
+  const ops = [];
+  const ctxProto = { fillRect(...a) { ops.push(['fill', ...a]); }, clearRect(...a) { ops.push(['clear', ...a]); } };
+  function HTMLCanvasElement() {}
+  HTMLCanvasElement.prototype.getContext = function () { if (!this._c) { this._c = Object.create(ctxProto); this._c.canvas = this; } return this._c; };
+  const window = { HTMLCanvasElement };
+  vm.runInContext(src, vm.createContext({ window, Object }));
+  const back = new HTMLCanvasElement(); back.id = 'id_thumbnails_background'; back.width = 200; back.height = 600;
+  const other = new HTMLCanvasElement(); other.id = 'id_main'; other.width = 200; other.height = 600;
+  back.getContext('2d').fillRect(0, 0, 200, 600);
+  assert.deepEqual(ops.pop(), ['fill', 0, 0, 200, 600], 'a solid theme keeps its fill');
+  window.__ycGlassFrame = true;
+  back.getContext('2d').fillRect(0, 0, 200, 600);
+  assert.deepEqual(ops.pop(), ['clear', 0, 0, 200, 600], 'glass: the background clears');
+  back.getContext('2d').fillRect(10, 20, 100, 3);
+  assert.deepEqual(ops.pop(), ['fill', 10, 20, 100, 3], 'an outline still draws');
+  other.getContext('2d').fillRect(0, 0, 200, 600);
+  assert.deepEqual(ops.pop(), ['fill', 0, 0, 200, 600], 'no other canvas changes');
+});

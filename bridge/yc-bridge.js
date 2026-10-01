@@ -594,6 +594,20 @@
       '#editor-container > #editor_sdk.yc-pe-sdk { background: ' + o.panel + I + '; }' +
       '#editor-container > #editor_sdk.yc-pe-sdk { overflow: visible' + I + '; }' +
       '#editor-container.yc-pe-ct { background: transparent' + I + '; }' +
+      // Fix round 3 (Destin, 2026-10-01: "still dark sharp-cornered background bleeding out around the
+      // left edge of the slides container"): on a glass (wallpaper) theme the presentation's
+      // #editor_sdk painted the frame's see-through panel under everything — under the slide list,
+      // whose own canvas paints the panel again, and under the hole, whose corners paint it again —
+      // so a darker square-cornered band showed around the hole's left edge and corners, and the
+      // slide itself sat on a tinted desk; sdkjs also painted the slide list's canvas and the 4px
+      // splitter beside the hole in the panel colour made opaque (a darker block than the glass).
+      // Now #editor_sdk paints nothing; the slide list's box and the splitter paint the glass panel
+      // once each (the list's canvas no longer fills its background — yc-early.js clearThumbsBack);
+      // the hole's corners and its 1px seam on the right are the only other paint. The slide stays
+      // on the see-through desk, like Word's page.
+      (o.wallpaper ? '#editor-container > #editor_sdk.yc-pe-sdk { background: transparent' + I + '; }' +
+        '#editor_sdk > #id_panel_thumbnails, #id_panel_thumbnails_split { background: ' + o.panel + I + '; }' +
+        '#id_main_parent { box-shadow: 1px 0 0 ' + o.panel + I + '; }' : '') +
       // Fix round 1: the slide area's own gaps (the 4px between the slide and its notes) showed
       // the frame colour through it — a band across the hole. They are the desk's colour now.
       '#id_main_parent { background-color: ' + (o.wallpaper ? 'transparent' : (t.canvas || t.panel)) + I + '; }' +
@@ -761,6 +775,12 @@
       // "Interface theme" row goes — YouCoded sets the editor's theme from the app's own on every
       // pass, so a pick there snapped straight back.
       '#file-menu-panel tr.themes { display: none' + I + '; }' +
+      // Fix round 3 (Task 7): "Tab style" and "Use toolbar color as tabs background" change only how
+      // the editor draws its own ribbon tabs, and the frame styling (frameCss) draws those itself —
+      // so both did nothing visible. With the Interface theme row already gone they were the whole
+      // Appearance group: its title and the divider after it go with them (all three editors).
+      '#file-menu-panel tr.appearance, #file-menu-panel tr.tab-style, #file-menu-panel tr.tab-background,' +
+      ' #file-menu-panel tr.tab-background + tr.divider-group, #fms-cmb-tab-style, #fms-chb-tab-background { display: none' + I + '; }' +
       // v0.1.14: Word's TXT encoding dialog is answered for the person (acceptTxtOptions says why);
       // hidden from its first frame so it never flashes. The CSV one has a delimiter and stays.
       // v0.1.31: acceptTxtOptions sets both classes the moment the dialog is added (before paint).
@@ -1091,6 +1111,9 @@
     // Fix round 2: the canvas scrollbars (yc-early.js drawSlim) keep their thumb clear of the
     // document area's rounded corners; they need the theme's large radius to know how far.
     try { win.__ycScrollInset = (parseFloat(latest.tokens && latest.tokens['radius-lg']) || 12); } catch (e) { /* not ours */ }
+    // Fix round 3: on a glass theme the slide list's background canvas is cleared, not filled
+    // (yc-early.js clearThumbsBack says why); the frame paints the panel under it once.
+    try { win.__ycGlassFrame = !!latest.wallpaper; } catch (e) { /* not ours */ }
     var style = doc.getElementById(STYLE_ID);
     if (!style) { style = doc.createElement('style'); style.id = STYLE_ID; doc.head.appendChild(style); }
     var th = themeFor();
