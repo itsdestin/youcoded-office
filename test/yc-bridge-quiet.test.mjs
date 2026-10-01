@@ -482,3 +482,20 @@ test('glass presentation frame is painted once; Tab style and tab background set
   const hidden = ruleFor(css, '#file-menu-panel tr.tab-style').find((r) => r.includes('display: none'));
   for (const s of ['tr.appearance', 'tr.tab-background', 'tr.tab-background + tr.divider-group', '#fms-cmb-tab-style', '#fms-chb-tab-background']) assert.ok(hidden.includes(s), `${s} hidden`);
 });
+
+// Fix round 4 (Destin, 2026-10-01, a wallpaper theme: "still spots in the excel viewer that have the
+// weird darker background"): the sheet's solid grid gets a solid border all round, and the 4px gap
+// beside an open left panel is painted — on wallpaper themes only.
+test('wallpaper sheet: scrollbar strips carry the header colour; the gap beside an open left panel is filled', async () => {
+  const solid = await load();
+  solid.post({ type: 'yc:office-theme', theme: theme() });
+  solid.tick();
+  assert.doesNotMatch(cssOf(solid.head), /#ws-v-scrollbar/, 'solid themes unchanged');
+  const { post, tick, head } = await load();
+  post({ type: 'yc:office-theme', theme: theme({ wallpaper: true, panelsOpacity: 0.6 }) });
+  tick();
+  const css = cssOf(head);
+  assert.ok(ruleFor(css, '#ws-v-scrollbar, #ws-h-scrollbar, #ws-scrollbar-corner').some((r) => /background-color: #111111/.test(r)));
+  assert.ok(ruleFor(css, '.layout-resizer.after:not([style*="display: none"]) ~ .layout-item:not([id])').some((r) => /box-shadow: -4px 0 0 rgba\(17,17,17,0\.6\)/.test(r)));
+  assert.doesNotMatch(css, /:has\(/);
+});

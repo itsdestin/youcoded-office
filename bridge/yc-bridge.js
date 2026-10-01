@@ -618,7 +618,13 @@
         // the bottom-left. The two scrollbar strips and the square between them now carry the
         // headers' solid panel colour, so the grid has one solid border all round and the hole's
         // rounded corners cut it cleanly.
-        '#ws-v-scrollbar, #ws-h-scrollbar, #ws-scrollbar-corner { background-color: ' + t.panel + I + '; }' : '') +
+        '#ws-v-scrollbar, #ws-h-scrollbar, #ws-scrollbar-corner { background-color: ' + t.panel + I + '; }' +
+        // Fix round 4 (sweep): with a left panel open (comments, search) the sheet's area starts 4px
+        // after the panel, and those 4px were painted by nothing — a dark line down the sheet's left
+        // edge on a wallpaper theme. The panel's resizer only shows while a panel is open; the
+        // sheet's area (the one item there with no id — Word's and PowerPoint's are
+        // #editor-container and have no gap) fills the 4px with the frame then, and only then.
+        '#viewport-hbox-layout > .layout-resizer.after:not([style*="display: none"]) ~ .layout-item:not([id]) { box-shadow: -4px 0 0 ' + o.panel + I + '; }' : '') +
       // Fix round 1: the slide area's own gaps (the 4px between the slide and its notes) showed
       // the frame colour through it — a band across the hole. They are the desk's colour now.
       '#id_main_parent { background-color: ' + (o.wallpaper ? 'transparent' : (t.canvas || t.panel)) + I + '; }' +
