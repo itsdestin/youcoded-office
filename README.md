@@ -84,12 +84,17 @@ bash build/package-platform.sh win32-x64
 ```
 
 Needs Node 22 first on `PATH` (euro-office-lite's grunt build chain calls
-`util.isRegExp`, which Node 23+ removed), plus `git`, `curl`, `ar` and `tar`.
+`util.isRegExp`, which Node 23+ removed), plus `git`, `curl`, `ar`, `tar` and `g++`.
 The script clones euro-office-lite at the tag pinned in `PIN.json`, builds
 its frontend from source, pulls `x2t` and the blank templates out of that
 same release's `.deb`, applies this repo's two patches
 (`build/patch.mjs`), and writes `dist/youcoded-office-<version>-linux-x64.tar.gz`
-plus `dist/SHA256SUMS`. `package-platform.sh` reuses that bundle's editors and takes
+plus `dist/SHA256SUMS`.
+It also makes PowerPoint's standard slide themes (`build/gen-themes.mjs`): each source deck in
+`sdkjs/slide/themes/src/` becomes `theme<N>/theme.bin`, their names `themes.js`, and their gallery
+pictures `sdkjs/common/Images/themes_thumbnail*.png` — what OnlyOffice's `allthemesgen` makes and
+euro-office-lite does not ship. The pictures are drawn by the bundled converter's own libraries
+(`build/themethumbs.cpp`, compiled with `g++` during the build). `package-platform.sh` reuses that bundle's editors and takes
 `converter/` from the same tag's Mac `.dmg` or Windows installer.
 
 Run the tests against the built bundle, and the converter smoke test against any unpacked

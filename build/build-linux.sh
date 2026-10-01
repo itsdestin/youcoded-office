@@ -47,6 +47,11 @@ cp -r "$WORK/deb/usr/lib/Euro-Office-Lite/templates" "$OUT/templates"
 # editors never load this file, so only x2t sees the swap.
 cp "$WORK/deb/usr/lib/Euro-Office-Lite/editors/sdkjs/common/Native/native.js" "$OUT/editors/sdkjs/common/Native/native.js"
 
+# 2b. PowerPoint's standard themes (v0.1.37), made with this converter — see build/gen-themes.mjs.
+#     WHY here: it needs the converter (step 2) and must finish before the bundle is packed; the
+#     files are plain editor files, so the Mac and Windows bundles reuse them with editors/.
+node "$ROOT/build/gen-themes.mjs" "$OUT"
+
 # 3. YouCoded's patches, licence, notices, manifest.
 node "$ROOT/build/patch.mjs" "$OUT/editors"
 cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$OUT/"

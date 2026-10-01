@@ -85,6 +85,30 @@ test('bundle carries licence, notice, manifest and templates', async () => {
     await stat(path.join(B, f));
 });
 
+// v0.1.37: PowerPoint's Design tab lists the standard themes. Each needs its editor-format file,
+// its name, and its picture in every scale's strip — all made by build/gen-themes.mjs.
+test('the standard slide themes are built: files, names and gallery pictures agree', async () => {
+  const themes = path.join(B, 'editors', 'sdkjs', 'slide', 'themes');
+  const decks = (await readdir(path.join(themes, 'src'))).filter((n) => n.endsWith('.pptx'));
+  assert.ok(decks.length >= 10, 'the source decks are there');
+  const js = await readFile(path.join(themes, 'themes.js'), 'utf8');
+  const names = JSON.parse(/^AscCommon\.g_defaultThemes = (\[.*\]);$/.exec(js)[1]);
+  assert.equal(names.length, decks.length, 'one name per deck');
+  assert.ok(names.includes('Office') && names.includes('Blank'));
+  for (let i = 1; i <= names.length; i++) {
+    const bin = await readFile(path.join(themes, `theme${i}`, 'theme.bin'));
+    assert.equal(bin.subarray(0, 5).toString(), 'PPTY;', `theme${i} is in the editor's format`);
+  }
+  // Each strip is one 88x40 picture per theme, times its scale (PNG width/height at bytes 16-23).
+  for (const [s, suffix] of [[1, ''], [1.5, '@1.5x'], [2, '@2x'], [5, '@5x']]) {
+    const png = await readFile(path.join(B, 'editors', 'sdkjs', 'common', 'Images', `themes_thumbnail${suffix}.png`));
+    assert.equal(png.readUInt32BE(16), Math.trunc(88 * s), `${suffix || '1x'} width`);
+    assert.equal(png.readUInt32BE(20), Math.trunc(40 * s) * names.length, `${suffix || '1x'} height`);
+  }
+  const html = await readFile(path.join(B, 'editors', 'web-apps', 'apps', 'presentationeditor', 'main', 'index.html'), 'utf8');
+  assert.ok(html.indexOf('sdkjs/slide/themes/themes.js') > html.indexOf('sdkjs/slide/sdk-all-min.js'), 'names load after the SDK');
+});
+
 test('x2t round-trips a docx through Editor.bin', async () => {
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'yco-'));
   const conv = path.join(B, 'converter');

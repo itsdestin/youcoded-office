@@ -126,6 +126,16 @@ await replaceOnce('bridge.js',
   "    var fileName = filePath.replace(/\\\\/g, '/').split('/').pop();\n" +
   "    window._pendingFileData = { data: b64data, path: filePath, name: fileName };\n",
   "    window._pendingFileData = await window.__ycOpenFile(invoke, filePath);\n");
+// 11. PowerPoint's standard themes (v0.1.37). WHY: the Design tab lists the themes named in
+//     AscCommon.g_defaultThemes, read once when the editor starts. build/gen-themes.mjs makes them
+//     (sdkjs/slide/themes/themes.js, theme<N>/theme.bin, the picture strips); euro-office-lite's
+//     page never loads the names — its guard right after the SDK even refuses the SDK's own
+//     request for themes.js, because the file never existed in its build — so the gallery was
+//     empty. A plain tag right after sdk-all-min.js (which defines AscCommon) sets them in time.
+//     The guard stays: it only answers sdk-all-min's late, duplicate request.
+await replaceOnce(path.join('web-apps', 'apps', 'presentationeditor', 'main', 'index.html'),
+  '<script src="../../../../sdkjs/slide/sdk-all-min.js"></script>',
+  '<script src="../../../../sdkjs/slide/sdk-all-min.js"></script><script src="../../../../sdkjs/slide/themes/themes.js"></script>');
 const here = path.dirname(new URL(import.meta.url).pathname);
 await copyFile(path.join(here, '..', 'bridge', 'tauri-relay.js'), path.join(dir, 'tauri-relay.js'));
 await copyFile(path.join(here, '..', 'bridge', 'yc-bridge.js'), path.join(dir, 'yc-bridge.js'));

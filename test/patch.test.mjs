@@ -32,6 +32,11 @@ async function patchedCopy() {
   const main = path.join(dir, 'web-apps', 'apps', 'documenteditor', 'main');
   await mkdir(main, { recursive: true });
   await writeFile(path.join(main, 'index.html'), '<html><head></head></html>');
+  // The presentation page as the pinned tag builds it: its SDK loader, then the themes.js guard.
+  const slides = path.join(dir, 'web-apps', 'apps', 'presentationeditor', 'main');
+  await mkdir(slides, { recursive: true });
+  await writeFile(path.join(slides, 'index.html'), '<html><head></head><body>' +
+    '<script src="../../../../sdkjs/slide/sdk-all-min.js"></script><script>\n(function() { /* themes.js guard */ })();\n</script></body></html>');
   await run(process.execPath, [path.resolve(import.meta.dirname, '..', 'build', 'patch.mjs'), dir]);
   return dir;
 }
@@ -134,5 +139,18 @@ test('the patch stops when a pattern it replaces appears more than once', async 
     run(process.execPath, [path.resolve(import.meta.dirname, '..', 'build', 'patch.mjs'), dir]),
     (e) => /pattern found more than once in index\.html/.test(e.stderr),
   );
+  await rm(dir, { recursive: true, force: true });
+});
+
+// v0.1.37: the Design tab's standard themes. Their names (themes.js, which build/gen-themes.mjs
+// makes) must be set after sdk-all-min.js defines AscCommon and before the editor starts, which
+// reads them once; euro-office-lite's own page never loads the file.
+test('the presentation page loads the standard theme names right after its SDK', async () => {
+  const dir = await patchedCopy();
+  const html = await readFile(path.join(dir, 'web-apps', 'apps', 'presentationeditor', 'main', 'index.html'), 'utf8');
+  assert.match(html, /<script src="\.\.\/\.\.\/\.\.\/\.\.\/sdkjs\/slide\/sdk-all-min\.js"><\/script><script src="\.\.\/\.\.\/\.\.\/\.\.\/sdkjs\/slide\/themes\/themes\.js"><\/script>/);
+  // The other editors have no slide themes.
+  const word = await readFile(path.join(dir, 'web-apps', 'apps', 'documenteditor', 'main', 'index.html'), 'utf8');
+  assert.doesNotMatch(word, /themes\.js/);
   await rm(dir, { recursive: true, force: true });
 });
