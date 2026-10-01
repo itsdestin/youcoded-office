@@ -171,6 +171,46 @@
     d.__ycNoOpen = true;
     d.LocalFileOpen = function () { logLine('[YC] the editor\'s own Open is not used; files open from the Office start screen'); return Promise.resolve(); };
   }
+  // ── Recovered changes (v0.1.24, finish plan Task 8) ──
+  // WHY: YouCoded's host keeps every batch of edits the editor sends (save_changes) in a recovery
+  // journal, so a crash, a kill, or a window closed before the next save loses nothing. When the
+  // host opens a document (its "open-file" event), the host is asked first whether this document
+  // has edits its file never got; if so the editor opens the journal's starting point and replays
+  // them through its own recovery pipeline — exactly what Euro-Office's start-screen "Recover" does
+  // (bridge.js _loadEditorBin → _recoveryEnqueue → _recoveryMarkModified). Otherwise, or if the
+  // journal cannot be read, the file opens as before. build/patch.mjs points bridge.js's
+  // open-file listener here. Answers what bridge.js puts in window._pendingFileData.
+  window.__ycOpenFile = function (invoke, filePath) {
+    var name = String(filePath).replace(/\\/g, '/').split('/').pop();
+    return Promise.resolve()
+      .then(function () { return invoke('recovery_candidates'); })
+      .then(function (list) {
+        var c = list && list[0];
+        if (!c) return null;
+        return invoke('recovery_load', { id: c.id }).then(function (r) {
+          return { data: r.data, path: filePath, name: name, recovery: { id: r.id, changes: r.changes || [] } };
+        });
+      })
+      .catch(function (e) { logLine('[YC] recovering unsaved changes failed: ' + ((e && e.message) || e)); return null; })
+      .then(function (rec) {
+        return rec || invoke('open_file', { path: filePath }).then(function (b64) { return { data: b64, path: filePath, name: name }; });
+      });
+  };
+  // ── Edits reach the journal every second (v0.1.24, finish plan Task 8) ──
+  // WHY: sdkjs sends a batch of edits only after the person pauses for a second, and at most every
+  // two (its autosave: intervalWaitAutoSave, autoSaveGapFast), so a crash in the middle of a long
+  // stretch of typing lost all of it. Measured in the YouCoded dev window 2026-09-30: with no wait
+  // and a one-second gap, a batch arrives each second while typing, a few hundred bytes each. The
+  // batch only sends the edits; it never saves the document (that stays the host's autosave).
+  function streamEdits(win) {
+    try {
+      var api = (win.Asc && win.Asc.editor) || win.editor;
+      if (!api || api.__ycStream || typeof api.autoSaveGapFast !== 'number') return;
+      api.__ycStream = true;
+      api.intervalWaitAutoSave = 0;
+      api.autoSaveGapFast = 1000;
+    } catch (e) { /* not an editor frame */ }
+  }
   // ── A TXT's encoding (v0.1.14, Task 2 fix round 1) ──
   // WHY: Word's Export → TXT asks for an encoding, but x2t writes TXT as UTF-8 whatever it is told
   // (measured 2026-09-29: windows-1252, UTF-16 and ISO-8859-1 all came out UTF-8). A choice that is
@@ -222,6 +262,7 @@
     }).observe(doc.body, { childList: true });
   }
   function guardAll(win) {
+    streamEdits(win);
     extendDesktopEditor(win);
     noEditorOpen(win);
     watchTxtOptions(win);

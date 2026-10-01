@@ -23,7 +23,9 @@ async function patchedCopy() {
     "      if (ref.ew && ref.ew.DesktopOfflineAppDocumentEndSave) {\n        ref.ew.DesktopOfflineAppDocumentEndSave(0);\n      }\n" +
     "    } catch(e) {\n      window._eoLog('[EO] Print: ERROR: ' + (e.message || e));\n" +
     "      if (ref.ew && ref.ew.DesktopOfflineAppDocumentEndSave) {\n        ref.ew.DesktopOfflineAppDocumentEndSave(1);\n      }\n" +
-    "    } finally {\n      window.AscDesktopEditor._isPrinting = false;\n    }\n");
+    "    } finally {\n      window.AscDesktopEditor._isPrinting = false;\n    }\n" +
+    "  try {\n    var b64data = await invoke('open_file', { path: filePath });\n    var fileName = filePath.replace(/\\\\/g, '/').split('/').pop();\n" +
+    "    window._pendingFileData = { data: b64data, path: filePath, name: fileName };\n    if (window._openEditor) {\n");
   await writeFile(path.join(dir, 'editor-patches.js'),
     "          permissions: {\n            edit: true,\n            download: true,\n            print: true\n          }\n        },\n        editorConfig: {\n          mode: 'edit',\n          user: {\n            id: 'local-user',\n            name: _t('user')\n          },\n          customization: {\n            about: false,\n            feedback: false\n          }\n        },\n" +
     "                  if (options && options.advancedOptions &&\n                      typeof options.advancedOptions.asc_getNativeOptions !== 'function') {\n                    options.advancedOptions = undefined;\n                  }\n");
@@ -110,5 +112,15 @@ test('the person is "You" in the editor, and the comments bridge loads after the
   const html = await readFile(path.join(dir, 'index.html'), 'utf8');
   assert.ok(html.indexOf('yc-bridge.js') < html.indexOf('yc-comments.js'));
   await readFile(path.join(dir, 'yc-comments.js'), 'utf8');
+  await rm(dir, { recursive: true, force: true });
+});
+
+// v0.1.24 (finish plan Task 8): a document opens through the bridge's recovery check, so edits
+// YouCoded's host kept for it (a crash, a closed window) are replayed by the editor's own pipeline.
+test('opening a document goes through the recovery check', async () => {
+  const dir = await patchedCopy();
+  const js = await readFile(path.join(dir, 'bridge.js'), 'utf8');
+  assert.match(js, /window\._pendingFileData = await window\.__ycOpenFile\(invoke, filePath\);\n    if \(window\._openEditor\)/);
+  assert.doesNotMatch(js, /var b64data = await invoke\('open_file'/);
   await rm(dir, { recursive: true, force: true });
 });

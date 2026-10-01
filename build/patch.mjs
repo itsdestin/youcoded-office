@@ -113,6 +113,15 @@ await replaceOnce('bridge.js',
 //    the person "User", so one person's comments showed under two names depending on where they
 //    were written.
 await replaceOnce('editor-patches.js', "name: _t('user')", "name: 'You'");
+// 10. A document opens with its unsaved edits recovered, when YouCoded's host kept any (v0.1.24,
+//     finish plan Task 8). WHY: the host keeps every batch of edits in a recovery journal; the open
+//     asks it first (yc-bridge.js __ycOpenFile), and bridge.js's own pipeline replays the edits —
+//     the same path its start screen's Recover takes.
+await replaceOnce('bridge.js',
+  "    var b64data = await invoke('open_file', { path: filePath });\n" +
+  "    var fileName = filePath.replace(/\\\\/g, '/').split('/').pop();\n" +
+  "    window._pendingFileData = { data: b64data, path: filePath, name: fileName };\n",
+  "    window._pendingFileData = await window.__ycOpenFile(invoke, filePath);\n");
 const here = path.dirname(new URL(import.meta.url).pathname);
 await copyFile(path.join(here, '..', 'bridge', 'tauri-relay.js'), path.join(dir, 'tauri-relay.js'));
 await copyFile(path.join(here, '..', 'bridge', 'yc-bridge.js'), path.join(dir, 'yc-bridge.js'));
