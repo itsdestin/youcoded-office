@@ -712,10 +712,68 @@
     win.dispatchEvent(new win.Event('resize'));
   }
 
+  // ── Typing keeps working while a save runs (v0.1.20) ──
+  // WHY: sdkjs's desktop save (DesktopOfflineAppDocumentStartSave) starts a "block interaction"
+  // long action and only ends it in DesktopOfflineAppDocumentEndSave, which bridge.js calls after
+  // YouCoded has translated the whole document and written the file. web-apps turns the keyboard
+  // off for that whole time, so whatever the person typed meanwhile was thrown away — measured in
+  // the YouCoded dev window 2026-09-30: 2-4 characters lost per save on 5-20 MB documents, and four
+  // whole cells on a 20 MB workbook (its save holds the block ~5 s). The document's bytes are taken
+  // synchronously inside StartSave (bridge.js LocalFileSave reads asc_nativeGetFile before its first
+  // await), so the block has done its job the moment StartSave returns: it is lifted there, and the
+  // editor's own end of that save, later, is swallowed so it cannot end some other long action.
+  // Typing after the bytes were taken is newer than the save, so the editor stays "modified" and the
+  // host's follow-up save writes it. A Save As keeps its block (its dialog is up), as before.
+  function keepTypingDuringSave(win) {
+    try {
+      var start = win.DesktopOfflineAppDocumentStartSave;
+      var api = (win.Asc && win.Asc.editor) || win.editor;
+      var A = win.Asc;
+      if (typeof start !== 'function' || start.__yc || !api || typeof api.sync_EndAction !== 'function' || !A || !A.c_oAscAsyncActionType || !A.c_oAscAsyncAction) return;
+      var BLOCK = A.c_oAscAsyncActionType.BlockInteraction, SAVE = A.c_oAscAsyncAction.Save;
+      // WHY the state lives on the window, not in this call: the editor can define StartSave again
+      // after its API exists (measured in the spreadsheet editor), so a later pass re-wraps
+      // StartSave while the API keeps the wrappers of the first pass; both must see one state.
+      // lifted: this save's block was lifted early, and its own end is still to come.
+      // started: the StartSave under way really started its block.
+      var st = win.__ycSaveState || (win.__ycSaveState = { lifted: false, started: false });
+      // sdkjs's StartSave/EndSave call the global `editor`; patch it and Asc.editor if they differ.
+      var apis = [api];
+      if (win.editor && win.editor !== api) apis.push(win.editor);
+      apis.forEach(function (a) {
+        if (typeof a.sync_EndAction !== 'function' || a.sync_EndAction.__yc) return;
+        var end = a.sync_EndAction;
+        var startAction = a.sync_StartAction;
+        a.sync_StartAction = function (type, id) {
+          if (type === BLOCK && id === SAVE) st.started = true;
+          return startAction.apply(this, arguments);
+        };
+        a.sync_EndAction = function (type, id) {
+          if (st.lifted && type === BLOCK && id === SAVE) { st.lifted = false; return; }
+          return end.apply(this, arguments);
+        };
+        a.sync_EndAction.__yc = true;
+      });
+      var patched = function (isSaveAs) {
+        // A previous save that never reached its end (it gave up) must not swallow this one's.
+        st.lifted = false;
+        st.started = false;
+        var r = start.apply(this, arguments);
+        // Only a block this call really started (StartSave's encryption branch starts none).
+        if (isSaveAs !== true && st.started) { api.sync_EndAction(BLOCK, SAVE); st.lifted = true; }
+        st.started = false;
+        return r;
+      };
+      patched.__yc = true;
+      win.DesktopOfflineAppDocumentStartSave = patched;
+    } catch (e) { /* not this editor's API: saves keep the editor's own behaviour */ }
+  }
+
   function walk(win) {
     blockPeers(win);
     guardUnload(win);
     quietEditor(win);
+    keepTypingDuringSave(win);
     if (latest) applyTo(win);
     var frames;
     try { frames = win.document.querySelectorAll('iframe'); } catch (e) { return; }
@@ -763,6 +821,9 @@
   }
   function save() {
     var api = editorApi();
+    // The frame may have been rebuilt since the last walk: make sure this save lets typing through.
+    var edoc = editorDoc(window);
+    if (edoc && edoc.defaultView) keepTypingDuringSave(edoc.defaultView);
     // WHY the modified check (v0.1.12): a Save As writes a separate file but still clears the
     // editor's "modified" flag, and asc_Save then skips the save — the document's own file would
     // silently miss the edits. The host asks only when it knows edits are unsaved, so an editor
