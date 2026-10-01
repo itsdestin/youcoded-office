@@ -212,6 +212,9 @@ test('every element id the add-on styles, hides or presses is still in the edito
   for (const app of await readdir(path.join(E, 'web-apps', 'apps'))) {
     for (const f of ['app.js', 'code.js', 'index.html']) ui += await readFile(path.join(E, 'web-apps', 'apps', app, 'main', f), 'utf8').catch(() => '');
   }
+  // v0.1.28: sdkjs builds part of the editing area's DOM itself (the presentation's notes
+  // container, #id_bottom_pannels_container, the frame now styles), so its code counts too.
+  for (const kind of Object.keys(SDK)) ui += await sdkText(kind);
   const ids = await hookedIds();
   // The ones named in the review that found this gap must be among them (the extraction works).
   for (const id of ['chart-button-update-data', 'external-links-btn-change', 'external-links-btn-open', 'external-links-btn-update',
