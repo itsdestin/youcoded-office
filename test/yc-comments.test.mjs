@@ -273,3 +273,25 @@ test('a move that cannot be made leaves the thread where it was, replies and all
   assert.deepEqual(cs.send({ kind: 'move', id: a.id, sheet: 'Notes', cell: 'C3' }), { ok: false, error: 'cell-has-comment' });
   assert.deepEqual(c.sheets[1].aComments.map((x) => x.sText), ['One', 'Two']);
 });
+
+// v0.1.34: the reply and edit boxes answer keys as the app's do — Enter sends, Shift+Enter is a new
+// line, Escape closes (the editor's own Close button is hidden from the reply box).
+test('Enter sends a reply, Shift+Enter does not, Escape closes the box', async () => {
+  const w = wordApi();
+  const listeners = [];
+  const clicked = [];
+  const btn = (cls, disabled = false) => ({ className: cls + (disabled ? ' disabled' : ''), disabled, click() { clicked.push(cls); } });
+  const box = { send: btn('btn-reply'), close: btn('btn-close'), querySelector(q) { return q.indexOf('btn-close') >= 0 ? this.close : this.send; } };
+  const ta = { tagName: 'TEXTAREA', closest: (q) => (q.indexOf('.reply-ct') >= 0 ? box : null) };
+  w.win.document = { addEventListener: (t, cb) => { if (t === 'keydown') listeners.push(cb); } };
+  const { send } = await load(w);
+  send({ kind: 'list' }); // the editor is found: its keys are listened to
+  const key = (k, extra = {}) => { const e = { key: k, target: ta, prevented: false, preventDefault() { this.prevented = true; }, stopPropagation() {}, ...extra }; listeners.forEach((l) => l(e)); return e; };
+  assert.equal(key('Enter').prevented, true);
+  assert.equal(key('Enter', { shiftKey: true }).prevented, false);
+  key('Escape');
+  assert.deepEqual(clicked, ['btn-reply', 'btn-close']);
+  box.send = btn('btn-reply', true);
+  assert.equal(key('Enter').prevented, true, 'an empty reply is not sent, and no new line is added');
+  assert.deepEqual(clicked, ['btn-reply', 'btn-close']);
+});

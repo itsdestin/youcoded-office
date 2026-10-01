@@ -309,15 +309,46 @@ test('Print sends a document\'s own options, and a workbook\'s panel choices onc
 // surfaces, border, radius and neutral avatar as the app's own (desktop components/comments/).
 test('comment cards in the editor look like the app\'s: inset card, edge border, neutral avatar, no quote', async () => {
   const { post, tick, head } = await load();
-  post({ type: 'yc:office-theme', theme: theme({ tokens: { ...theme().tokens, inset: '#0a0b0c', 'edge-dim': '#202122', 'radius-lg': '14px' } }) });
+  post({ type: 'yc:office-theme', theme: theme({ tokens: { ...theme().tokens, inset: '#0a0b0c', 'edge-dim': '#202122', 'radius-lg': '14px', 'fg-faint': '#556677', 'fg-2': '#aabbcc' } }) });
   tick();
   const css = cssOf(head);
   assert.match(css, /\.user-comment-item \{ [^}]*background-color: #0a0b0c !important; border: 1px solid #202122 !important; border-radius: 14px !important;/);
   // The editor colours each author's initial; the app's avatar is neutral (accent is for state).
   assert.match(css, /\.user-comment-item \.user-info \.color \{ [^}]*background-color: #0a0b0c !important;/);
-  assert.match(css, /\.user-comment-item \.user-quote \{ display: none !important; \}/);
-  // Resolved: the circle check filled in the accent.
-  assert.match(css, /\.btn-resolve\.comment-resolved \{ [^}]*background-color: #[0-9a-f]+ !important; \}/i);
+  assert.match(css, /\.user-comment-item \.user-quote, \.user-comment-item \.reply-arrow \{ display: none !important; \}/);
+});
+
+// v0.1.34: Destin, on v0.1.33 — "the checkmark/resolve button has weird bright spots when not
+// hovered, and the edit/delete buttons aren't the same icons used from the base comments and they
+// have a blue tint". The editor's dark skin inverts its sprite icons and draws the tick as a ::after.
+test('edit, delete and resolve are the app\'s own glyphs in the theme\'s faint text colour, with no editor sprite, filter or tick', async () => {
+  const { post, tick, head } = await load();
+  post({ type: 'yc:office-theme', theme: theme({ tokens: { ...theme().tokens, 'fg-faint': '#556677', 'fg-2': '#aabbcc' } }) });
+  tick();
+  const css = cssOf(head);
+  const editPaths = encodeURIComponent('<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>');
+  const binPaths = encodeURIComponent('<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>');
+  for (const [sel, paths] of [['btn-edit-common', editPaths], ['btn-delete', binPaths]]) {
+    const rule = new RegExp('\\.user-comment-item \\.' + sel + ' \\{ background: #556677 !important; -webkit-mask: [^}]*' + paths.replace(/[.*+?^${}()|[\]\\%]/g, '\\$&') + '[^}]*filter: none !important;');
+    assert.match(css, rule);
+    assert.match(css, new RegExp('\\.user-comment-item \\.' + sel + '::before, \\.user-comment-item \\.' + sel + '::after \\{ display: none !important;'));
+    assert.match(css, new RegExp('\\.user-comment-item \\.' + sel + ':hover \\{ background: #aabbcc !important; \\}'));
+  }
+  assert.match(css, /\.user-comment-item \.btn-resolve:not\(\.comment-resolved\)::before, \.user-comment-item \.btn-resolve:not\(\.comment-resolved\)::after \{ display: none !important;/);
+  assert.match(css, /\.user-comment-item \.btn-resolve\.comment-resolved::before, \.user-comment-item \.btn-resolve\.comment-resolved::after \{ display: none !important;/);
+});
+
+test('the reply box is the app\'s composer: "Reply…" in the field, the round send arrow inside it, no Close button', async () => {
+  const { post, tick, head } = await load();
+  post({ type: 'yc:office-theme', theme: theme() });
+  tick();
+  const css = cssOf(head);
+  assert.match(css, /\.user-comment-item \.user-reply::before \{ content: "Reply…";/);
+  assert.match(css, /\.user-comment-item \.reply-ct \.btn-reply \{ [^}]*width: 16px !important; height: 16px !important;[^}]*border-radius: 50% !important;/);
+  assert.match(css, /\.user-comment-item \.reply-ct \.btn-close \{ display: none !important; \}/);
+  // Editing: Cancel then Save, in the app's words.
+  assert.match(css, /\.inner-edit-ct \.btn-inner-edit::after \{ content: "Save";/);
+  assert.match(css, /\.inner-edit-ct \.btn-inner-close::after \{ content: "Cancel";/);
 });
 
 // v0.1.23 (finish plan Task 7, Destin: "the side bars and such should gracefully connect to the

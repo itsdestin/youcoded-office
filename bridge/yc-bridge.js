@@ -325,6 +325,8 @@
       '#slot-btn-compare, #slot-btn-data-from-text, #slot-btn-interface-theme'],
     // A resolved thread's text is muted (commentsCss).
     ['yc-resolved', '.user-comment-item:has(.btn-resolve.comment-resolved)', '.user-comment-item, .btn-resolve'],
+    // A comment or reply being edited shows "Editing" on its row in place of its icons (v0.1.34).
+    ['yc-editing', '.user-comment-item:has(> .inner-edit-ct), .reply-item-ct:has(> .inner-edit-ct)', '.user-comment-item, .inner-edit-ct'],
     ['yc-print-hide', PRINT_ROWS, '#id-print-settings, .menu__icon.btn-print'],
   ];
   var TAG_TRIGGER = TAGS.map(function (t) { return t[2]; }).join(', ') + ', #statusbar';
@@ -607,7 +609,16 @@
       // on the see-through desk, like Word's page.
       (o.wallpaper ? '#editor-container > #editor_sdk.yc-pe-sdk { background: transparent' + I + '; }' +
         '#editor_sdk > #id_panel_thumbnails, #id_panel_thumbnails_split { background: ' + o.panel + I + '; }' +
-        '#id_main_parent { box-shadow: 1px 0 0 ' + o.panel + I + '; }' : '') +
+        '#id_main_parent { box-shadow: 1px 0 0 ' + o.panel + I + '; }' +
+        // Fix round 4 (Destin, 2026-10-01, a wallpaper theme: "still spots in the excel viewer that
+        // have the weird darker background"): the sheet's grid canvas is opaque (sdkjs draws it
+        // without transparency, so its headers can only be a solid colour), but the scrollbar
+        // strips beside it were see-through — so the solid header band stopped square just short
+        // of the rounded top-right corner, with a lighter column under the curve, and likewise at
+        // the bottom-left. The two scrollbar strips and the square between them now carry the
+        // headers' solid panel colour, so the grid has one solid border all round and the hole's
+        // rounded corners cut it cleanly.
+        '#ws-v-scrollbar, #ws-h-scrollbar, #ws-scrollbar-corner { background-color: ' + t.panel + I + '; }' : '') +
       // Fix round 1: the slide area's own gaps (the 4px between the slide and its notes) showed
       // the frame colour through it — a band across the hole. They are the desk's colour now.
       '#id_main_parent { background-color: ' + (o.wallpaper ? 'transparent' : (t.canvas || t.panel)) + I + '; }' +
@@ -820,71 +831,173 @@
     return css + printCss() + commentsCss(t);
   }
 
-  // ── The comments panel looks like YouCoded's own comment cards (v0.1.21, finish plan Task 6) ──
-  // WHY: Destin asked for Office's comments to look and work like the app's (desktop renderer
-  // components/comments/: CommentCard, Avatar, ReplyField, CommentsPaneFrame). The same comment
-  // shows in both places — the assistant's live comments land here too — so the two must read as
-  // one feature. Each rule mirrors the app's classes, named beside it:
-  //   pane      bg-panel, header "Comments" 14px semibold over an edge line   (CommentsPaneFrame)
-  //   card      bg-inset, 1px edge-dim border, radius-lg, 12px padding, 12px text (CommentCard)
-  //   avatar    20px circle, inset fill, edge-dim border, 10px fg-2 initial — neutral, never the
-  //             editor's per-author colour (Avatar: accent is for state, not decoration)
-  //   name      fg medium; time 11px fg-muted; note fg-2; resolved thread's text fg-muted
-  //   replies   indented under the thread, no arrow                         (replyRow)
-  //   reply box the field surface: inset, edge-dim border, radius-lg, accent border on focus
-  //   buttons   Reply/Add: accent with on-accent text; Close: quiet
-  //   actions   edit/delete as quiet line icons shown on hover; resolve the circle check, filled
-  //             in the accent once resolved (CommentRowActions, CompleteToggle)
-  // The quoted text goes, as it did from the app's cards (Destin, round 11: "remove the quote
-  // section at the top of each comment") — the highlight in the document shows what it is about.
-  // The same rules cover the comment popover over the document, which uses the same item.
-  function svgMask(paths) {
-    return 'url("data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>') + '")';
+  // ── The comments panel IS YouCoded's comment panel (v0.1.21; matched control by control v0.1.34) ──
+  // WHY: Destin asked for Office's comments to look and work exactly like the app's own (desktop
+  // renderer components/comments/), and in v0.1.33 they still did not ("notice the reply/close
+  // buttons particularly … the checkmark has weird bright spots … the edit/delete buttons aren't the
+  // same icons … and they have a blue tint"). Every rule below copies the app's own classes, read
+  // from its source and measured in the workbench side by side with the reading view's panel:
+  //   pane      CommentsPaneFrame: a rounded box (radius-xl) with an edge border on the panel
+  //             surface, inset 8px from the strip; header 33px, padding 6/6/6/12, "Comments" 14px
+  //             semibold, an edge line under it; × = CloseButton icon-sm (20px ghost, 12px glyph)
+  //   card      CommentCard: inset, 1px edge-dim border, radius-lg, 12px padding, 12px text
+  //   avatar    Avatar: 20px circle, inset, edge-dim border, ONE 10px fg-2 initial (the editor
+  //             writes two: "PS") — never the editor's per-author colour
+  //   name row  name 12px medium fg, then the time 11px fg-muted on the same line; the note
+  //             below it in the column beside the avatar, 12px fg-2 (fg-muted once resolved)
+  //   actions   CommentActions: Edit and Delete are the app's own pencil and bin (stroke 2, 14px
+  //             glyph in an 18px button), fg-faint → fg-2 on hover, shown while the card is
+  //             hovered; Resolve is CompleteToggle's circle check (16px, stroke 1.8), fg-faint →
+  //             fg-2, filled in the accent with a knocked-out check once resolved. WHY `filter:
+  //             none` and no ::before/::after: the editor's dark skin inverts its sprite icons
+  //             (filter: invert(1) — that turned the faint grey blue) and draws the resolve tick
+  //             as a bordered ::after (the bright spots).
+  //   reply box CommentComposer: the field surface (inset, edge-dim border, radius-lg, accent on
+  //             focus), 11px text with "Reply…" in fg-muted, and the 16px round accent send arrow
+  //             INSIDE the field, dimmed while there is nothing to send. Enter sends, Escape
+  //             closes (yc-comments.js) — so the editor's own Close button goes.
+  //   editing   InlineEditField: the text in the same field, Cancel (ghost) then Save (primary),
+  //             small buttons, in the field's own footer; the row says "Editing ✎" in place of its
+  //             icons (CommentRowActions' EditingPill).
+  // The quoted text goes, as it did from the app's cards (Destin, round 11). No :has() here (perf,
+  // v0.1.31): yc-resolved / yc-editing are set from script (TAGS).
+  function svgUrl(svg) { return 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")'; }
+  function strokeIcon(paths, width) {
+    return svgUrl('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="' + width + '" stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>');
   }
-  var ICON_EDIT = svgMask('<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16z"/>');
-  var ICON_DELETE = svgMask('<path d="M5 7h14M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3"/>');
-  var ICON_RESOLVE = svgMask('<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/>');
-  var ICON_RESOLVED = 'url("data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill-rule="evenodd" fill="black" d="M12 2a10 10 0 1 1 0 20a10 10 0 0 1 0-20zm4.6 7.1l-1.2-1.2l-4.9 4.9l-2-2l-1.2 1.2l3.2 3.2z"/></svg>') + '")';
+  // The app's own glyphs, path for path (CommentActions.tsx EditGlyph / DeleteGlyph, CloseButton,
+  // CompleteToggle in SessionCardDetails.tsx, the composer's send arrow).
+  var EDIT_PATHS = '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
+  var ICON_EDIT = strokeIcon(EDIT_PATHS, 2);
+  function coloredIcon(paths, color) {
+    return svgUrl('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>');
+  }
+  var ICON_DELETE = strokeIcon('<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>', 2);
+  var ICON_CLOSE = strokeIcon('<path d="M6 18L18 6M6 6l12 12"/>', 2);
+  var ICON_MORE = strokeIcon('<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>', 2);
+  var ICON_ADD = strokeIcon('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v6M9 10h6"/>', 2);
+  var ICON_RESOLVE = strokeIcon('<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/>', 1.8);
+  function resolvedIcon(fill, knock) {
+    return svgUrl('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" fill="' + fill + '" stroke="' + fill + '"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="' + knock + '"/></svg>');
+  }
+  function sendIcon(color) {
+    return svgUrl('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="' + color + '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>');
+  }
   function commentsCss(t) {
     var I = ' !important';
     var font = t['font-sans'] ? 'font-family: ' + t['font-sans'] + I + ';' : '';
-    var lg = t['radius-lg'] || '12px', sm = t['radius-sm'] || '4px';
-    var fg2 = t['fg-2'] || t.fg, muted = t['fg-muted'] || fg2, faint = t['fg-faint'] || muted, dim = t['edge-dim'] || t.edge;
-    var card = '.user-comment-item';
-    var icon = function (sel, mask) {
-      return sel + ' { background-image: none' + I + '; background-color: ' + faint + I + '; -webkit-mask: ' + mask + ' center / 16px 16px no-repeat' + I + '; mask: ' + mask + ' center / 16px 16px no-repeat' + I + '; width: 20px' + I + '; height: 20px' + I + '; border-radius: ' + sm + I + '; cursor: pointer' + I + '; }' +
-        sel + ':hover { background-color: ' + fg2 + I + '; }';
+    var lg = t['radius-lg'] || '12px', xl = t['radius-xl'] || '16px', sm = t['radius-sm'] || '4px';
+    var fg2 = t['fg-2'] || t.fg, dimFg = t['fg-dim'] || fg2, muted = t['fg-muted'] || fg2, faint = t['fg-faint'] || muted, dim = t['edge-dim'] || t.edge;
+    var card = '.user-comment-item', box = '#comments-box';
+    // An icon drawn in the text colour through a mask: no sprite, no filter, no pseudo-elements.
+    var masked = function (sel, mask, size, idle, hover) {
+      return sel + ' { background: ' + idle + I + '; -webkit-mask: ' + mask + ' center / ' + size + ' ' + size + ' no-repeat' + I + '; mask: ' + mask + ' center / ' + size + ' ' + size + ' no-repeat' + I + '; filter: none' + I + '; box-shadow: none' + I + '; border: 0' + I + '; cursor: pointer' + I + '; }' +
+        sel + '::before, ' + sel + '::after { display: none' + I + '; content: none' + I + '; }' +
+        (hover ? sel + ':hover { background: ' + hover + I + '; }' : '');
     };
-    return '#left-panel-comments, #comments-box, #comments-box .messages-ct, #comments-box .dataview-ct { background-color: ' + t.panel + I + '; }' +
-      '#comments-header { border-bottom: 1px solid ' + t.edge + I + '; }' +
-      '#comments-header label { ' + font + ' font-size: 14px' + I + '; font-weight: 600' + I + '; color: ' + t.fg + I + '; }' +
-      '#comments-box .dataview-ct .item { padding: 4px 8px' + I + '; background: transparent' + I + '; border: 0' + I + '; box-shadow: none' + I + '; }' +
-      card + ' { ' + font + ' background-color: ' + t.inset + I + '; border: 1px solid ' + dim + I + '; border-radius: ' + lg + I + '; padding: 12px' + I + '; font-size: 12px' + I + '; color: ' + fg2 + I + '; box-shadow: none' + I + '; }' +
-      // The thread the person is on (clicked, or at the caret) — the accent edge, the app's selection.
-      '#comments-box .dataview-ct .item.selected ' + card + ', #comments-box .dataview-ct .item:focus-within ' + card + ' { border-color: ' + t.accent + I + '; }' +
-      card + ' .user-info .color { width: 20px' + I + '; height: 20px' + I + '; line-height: 18px' + I + '; border-radius: 50%' + I + '; background-color: ' + t.inset + I + '; border: 1px solid ' + dim + I + '; color: ' + fg2 + I + '; font-size: 10px' + I + '; font-weight: 500' + I + '; text-align: center' + I + '; }' +
-      card + ' .user-name { ' + font + ' color: ' + t.fg + I + '; font-weight: 500' + I + '; font-size: 12px' + I + '; }' +
-      card + ' .user-date { ' + font + ' color: ' + muted + I + '; font-size: 11px' + I + '; }' +
-      card + ' .user-message { ' + font + ' color: ' + fg2 + I + '; font-size: 12px' + I + '; margin-top: 2px' + I + '; white-space: pre-wrap' + I + '; }' +
+    // The app's small buttons (Button size sm): 11px medium, 4px 10px, radius-lg.
+    var smallBtn = 'min-width: 0' + I + '; width: auto' + I + '; height: auto' + I + '; padding: 4px 10px' + I + '; ' + font + ' font-size: 11px' + I + '; font-weight: 500' + I + '; line-height: 16px' + I + '; border-radius: ' + lg + I + '; border: 0' + I + '; box-shadow: none' + I + '; filter: none' + I + ';';
+    var primary = smallBtn + ' background-color: ' + t.accent + I + '; color: ' + t['on-accent'] + I + ';';
+    var ghost = smallBtn + ' background-color: transparent' + I + '; color: ' + dimFg + I + ';';
+    // A button whose own words are not the app's ("OK", "Close"): the app's word drawn instead.
+    var relabel = function (sel, word) {
+      return sel + ' { font-size: 0' + I + '; } ' + sel + '::after { content: "' + word + '"; font-size: 11px; }';
+    };
+    var field = 'background-color: ' + t.inset + I + '; border: 1px solid ' + dim + I + '; border-radius: ' + lg + I + '; box-shadow: none' + I + ';';
+    var fieldText = font + ' font-size: 11px' + I + '; line-height: 1.375' + I + '; color: ' + t.fg + I + '; background: transparent' + I + '; border: 0' + I + '; outline: none' + I + '; box-shadow: none' + I + '; resize: none' + I + '; padding: 6px 10px' + I + ';';
+    var css = '';
+
+    // ── The pane ──
+    css += '#left-panel-comments { background-color: ' + (t.canvas || t.panel) + I + '; padding: 8px' + I + '; box-sizing: border-box' + I + '; }' +
+      box + ' { background-color: ' + t.panel + I + '; border: 1px solid ' + t.edge + I + '; border-radius: ' + xl + I + '; overflow: hidden' + I + '; box-sizing: border-box' + I + '; }' +
+      box + ' .messages-ct, ' + box + ' .dataview-ct { background-color: ' + t.panel + I + '; }' +
+      '#comments-header { display: flex' + I + '; align-items: center' + I + '; gap: 2px' + I + '; height: 33px' + I + '; padding: 6px 6px 6px 12px' + I + '; box-sizing: border-box' + I + '; border-bottom: 1px solid ' + t.edge + I + '; background: transparent' + I + '; }' +
+      '#comments-header label { flex: 1' + I + '; order: 0' + I + '; margin: 0' + I + '; ' + font + ' font-size: 14px' + I + '; font-weight: 600' + I + '; line-height: 20px' + I + '; color: ' + t.fg + I + '; }' +
+      '#comments-header > div { float: none' + I + '; margin: 0' + I + '; }' +
+      '#comments-header #comments-btn-close { order: 9' + I + '; }' +
+      // The header's buttons are the app's CloseButton (ghost, icon-sm): 20px, radius-lg, fg-dim,
+      // the inset fill and fg on hover; their glyphs take the button's colour (no editor tint).
+      '#comments-header .btn { width: 20px' + I + '; height: 20px' + I + '; min-width: 0' + I + '; padding: 0' + I + '; border: 0' + I + '; border-radius: ' + lg + I + '; background: transparent' + I + '; color: ' + dimFg + I + '; box-shadow: none' + I + '; display: inline-flex' + I + '; align-items: center' + I + '; justify-content: center' + I + '; }' +
+      '#comments-header .btn:hover, #comments-header .btn.active, #comments-header .btn:active { background-color: ' + t.inset + I + '; color: ' + t.fg + I + '; }' +
+      // Each header glyph is drawn like the app's icons — a stroke in the button's own colour — so no
+      // editor sprite (the add-comment one is blue) and no editor filter shows: × is CloseButton's,
+      // "…" and "add" are the same stroke family (lucide's more-horizontal, message-square-plus).
+      '#comments-header .btn svg, #comments-header .btn .caption, #comments-header .btn .inner-box-caret { display: none' + I + '; }' +
+      '#comments-header .btn::after { content: ""' + I + '; display: block' + I + '; width: 12px' + I + '; height: 12px' + I + '; background: currentColor' + I + '; filter: none' + I + '; }' +
+      '#comments-btn-close .btn::after { -webkit-mask: ' + ICON_CLOSE + ' center / 12px 12px no-repeat' + I + '; mask: ' + ICON_CLOSE + ' center / 12px 12px no-repeat' + I + '; }' +
+      '#comments-btn-sort .btn::after { width: 14px' + I + '; height: 14px' + I + '; -webkit-mask: ' + ICON_MORE + ' center / 14px 14px no-repeat' + I + '; mask: ' + ICON_MORE + ' center / 14px 14px no-repeat' + I + '; }' +
+      '#comments-btn-add .btn::after { width: 14px' + I + '; height: 14px' + I + '; -webkit-mask: ' + ICON_ADD + ' center / 14px 14px no-repeat' + I + '; mask: ' + ICON_ADD + ' center / 14px 14px no-repeat' + I + '; }' +
+      box + ' .dataview-ct .item { padding: 4px 8px' + I + '; background: transparent' + I + '; border: 0' + I + '; box-shadow: none' + I + '; }' +
+      box + ' .dataview-ct .item:first-child { padding-top: 8px' + I + '; }';
+
+    // ── The card ──
+    css += card + ' { ' + font + ' position: relative' + I + '; background-color: ' + t.inset + I + '; border: 1px solid ' + dim + I + '; border-radius: ' + lg + I + '; padding: 12px' + I + '; font-size: 12px' + I + '; line-height: 16px' + I + '; color: ' + fg2 + I + '; box-shadow: none' + I + '; }' +
+      // The thread under the pointer, or the one the person is on, gets the app's ring (CommentsMargin:
+      // ring-2 ring-accent/60) — the same cue that lights its highlight in the document.
+      box + ' .dataview-ct .item:hover ' + card + ', ' + box + ' .dataview-ct .item.selected ' + card + ' { box-shadow: 0 0 0 2px ' + rgba(t.accent, 0.6) + I + '; }' +
+      card + ' .user-info { display: flex' + I + '; align-items: flex-start' + I + '; gap: 8px' + I + '; height: auto' + I + '; margin: 0' + I + '; padding-right: 64px' + I + '; }' +
+      card + ' .reply-item-ct .user-info { padding-right: 44px' + I + '; }' +
+      card + ' .user-info .color { flex: none' + I + '; display: block' + I + '; width: 20px' + I + '; height: 20px' + I + '; margin: 0' + I + '; box-sizing: border-box' + I + '; line-height: 18px' + I + '; border-radius: 50%' + I + '; background-color: ' + t.inset + I + '; border: 1px solid ' + dim + I + '; color: ' + fg2 + I + '; font-size: 0' + I + '; font-weight: 500' + I + '; text-align: center' + I + '; overflow: hidden' + I + '; }' +
+      card + ' .user-info .color::first-letter { font-size: 10px; }' +
+      card + ' .user-info-text { display: flex' + I + '; flex-direction: row' + I + '; flex: 1 1 auto' + I + '; width: auto' + I + '; align-items: baseline' + I + '; gap: 6px' + I + '; min-width: 0' + I + '; margin: 0' + I + '; padding: 0' + I + '; line-height: 16px' + I + '; }' +
+      card + ' .user-name { ' + font + ' color: ' + t.fg + I + '; font-weight: 500' + I + '; font-size: 12px' + I + '; line-height: 16px' + I + '; overflow: hidden' + I + '; text-overflow: ellipsis' + I + '; white-space: nowrap' + I + '; padding: 0' + I + '; flex: 0 0 auto' + I + '; max-width: 75%' + I + '; }' +
+      // The editor's date is long ("9/23/26, 10:00 AM") where the app's is "1d ago": it gives way
+      // before the name does.
+      card + ' .user-date { ' + font + ' color: ' + muted + I + '; font-size: 11px' + I + '; line-height: 16px' + I + '; white-space: nowrap' + I + '; overflow: hidden' + I + '; text-overflow: ellipsis' + I + '; flex: 0 100 auto' + I + '; min-width: 0' + I + '; padding: 0' + I + '; }' +
+      // The note sits in the column beside the avatar, just under the name (the avatar is 20px,
+      // the name line 16px: the app's mt-0.5 lands it 2px under the name).
+      card + ' .user-message { ' + font + ' color: ' + fg2 + I + '; font-size: 12px' + I + '; line-height: 16px' + I + '; margin: -2px 0 0 28px' + I + '; padding: 0' + I + '; white-space: pre-wrap' + I + '; }' +
       card + '.yc-resolved .user-message { color: ' + muted + I + '; }' +
-      card + ' .user-quote { display: none' + I + '; }' +
-      card + ' .reply-arrow { display: none' + I + '; }' +
-      card + ' .reply-item-ct { margin-top: 8px' + I + '; padding-left: 4px' + I + '; }' +
-      // "Add reply" reads as the app's reply box, waiting to be typed in.
-      // WHY height auto: the editor fixes this label at 16px (an underlined link), which left its
-      // text hanging below the new box; the indent it takes under a reply goes too.
-      card + ' .user-reply { display: block' + I + '; height: auto' + I + '; line-height: 18px' + I + '; margin: 8px 0 0' + I + '; padding: 6px 10px' + I + '; background-color: ' + t.inset + I + '; border: 1px solid ' + dim + I + '; border-radius: ' + lg + I + '; color: ' + muted + I + '; text-decoration: none' + I + '; ' + font + ' font-size: 12px' + I + '; cursor: text' + I + '; }' +
-      card + ' .user-reply:hover { border-color: ' + t.edge + I + '; }' +
-      card + ' textarea, #comments-box textarea, .new-comment-ct textarea { ' + font + ' background-color: ' + t.inset + I + '; border: 1px solid ' + dim + I + '; border-radius: ' + lg + I + '; color: ' + t.fg + I + '; font-size: 12px' + I + '; padding: 6px 10px' + I + '; }' +
-      card + ' textarea:focus, #comments-box textarea:focus, .new-comment-ct textarea:focus { border-color: ' + t.accent + I + '; outline: none' + I + '; box-shadow: none' + I + '; }' +
-      card + ' textarea::placeholder, #comments-box textarea::placeholder { color: ' + muted + I + '; }' +
-      card + ' .btn.primary, #comments-box .btn.primary, .new-comment-ct .btn.primary { background-color: ' + t.accent + I + '; border-color: ' + t.accent + I + '; color: ' + t['on-accent'] + I + '; border-radius: ' + lg + I + '; ' + font + ' font-size: 12px' + I + '; }' +
-      card + ' .btn:not(.primary), .new-comment-ct .btn:not(.primary) { background: transparent' + I + '; border-color: transparent' + I + '; color: ' + fg2 + I + '; border-radius: ' + lg + I + '; ' + font + ' font-size: 12px' + I + '; }' +
-      // Edit and delete wait for the pointer (or focus), like the app's row actions; resolve stays.
-      card + ' .edit-ct .btn-edit-common, ' + card + ' .edit-ct .btn-delete, ' + card + ' .btns-reply-ct > div { opacity: 0' + I + '; }' +
-      card + ':hover .edit-ct .btn-edit-common, ' + card + ':hover .edit-ct .btn-delete, ' + card + ':focus-within .edit-ct > div, ' + card + ' .reply-item-ct:hover .btns-reply-ct > div { opacity: 1' + I + '; }' +
-      icon(card + ' .btn-edit-common', ICON_EDIT) + icon(card + ' .btn-delete', ICON_DELETE) + icon(card + ' .btn-resolve', ICON_RESOLVE) +
-      card + ' .btn-resolve.comment-resolved { -webkit-mask-image: ' + ICON_RESOLVED + I + '; mask-image: ' + ICON_RESOLVED + I + '; background-color: ' + t.accent + I + '; }';
+      card + ' .user-quote, ' + card + ' .reply-arrow { display: none' + I + '; }' +
+      // A workbook's comment shows its cell on a muted line under the name, as the app's card
+      // does ("C4"; CommentCard's cellRef) — the editor keeps the cell in the quote's place.
+      '.yc-sheet ' + card + ' > .user-quote { display: block' + I + '; order: 0' + I + '; margin: -4px 0 0 28px' + I + '; padding: 0' + I + '; border: 0' + I + '; ' + font + ' font-size: 11px' + I + '; line-height: 16px' + I + '; font-style: normal' + I + '; color: ' + muted + I + '; white-space: nowrap' + I + '; overflow: hidden' + I + '; text-overflow: ellipsis' + I + '; }' +
+      '.yc-sheet ' + card + ' > .user-quote + .user-message { margin-top: 2px' + I + '; }' +
+      card + ' .reply-item-ct { margin: 8px 0 0' + I + '; padding: 0 0 0 4px' + I + '; position: relative' + I + '; }';
+
+    // ── Edit, delete, resolve ──
+    css += card + ' .edit-ct { position: absolute' + I + '; top: 12px' + I + '; right: 12px' + I + '; display: flex' + I + '; align-items: center' + I + '; gap: 2px' + I + '; height: 18px' + I + '; margin: 0' + I + '; }' +
+      card + ' .btns-reply-ct { position: absolute' + I + '; top: 0' + I + '; right: 0' + I + '; display: flex' + I + '; gap: 2px' + I + '; margin: 0' + I + '; }' +
+      card + ' .edit-ct > div, ' + card + ' .btns-reply-ct > div { float: none' + I + '; margin: 0' + I + '; padding: 0' + I + '; border-radius: ' + sm + I + '; }' +
+      card + ' .btn-edit-common, ' + card + ' .btn-delete { width: 18px' + I + '; height: 18px' + I + '; opacity: 0' + I + '; }' +
+      card + ':hover .edit-ct .btn-edit-common, ' + card + ':hover .edit-ct .btn-delete, ' + card + ' .reply-item-ct:hover .btns-reply-ct > div,' +
+      ' ' + card + ':focus-within .edit-ct > div { opacity: 1' + I + '; }' +
+      masked(card + ' .btn-edit-common', ICON_EDIT, '14px', faint, fg2) +
+      masked(card + ' .btn-delete', ICON_DELETE, '14px', faint, fg2) +
+      card + ' .btn-resolve { width: 16px' + I + '; height: 16px' + I + '; margin-left: 2px' + I + '; }' +
+      masked(card + ' .btn-resolve:not(.comment-resolved)', ICON_RESOLVE, '16px', faint, fg2) +
+      card + ' .btn-resolve.comment-resolved { background: ' + resolvedIcon(t.accent, t.canvas || t.panel) + ' center / 16px 16px no-repeat' + I + '; -webkit-mask: none' + I + '; mask: none' + I + '; filter: none' + I + '; box-shadow: none' + I + '; border: 0' + I + '; cursor: pointer' + I + '; }' +
+      card + ' .btn-resolve.comment-resolved::before, ' + card + ' .btn-resolve.comment-resolved::after { display: none' + I + '; content: none' + I + '; }';
+
+    // ── The reply box: "Reply…" waiting, then the composer with its arrow inside the field ──
+    css += card + ' .user-reply { display: flex' + I + '; align-items: center' + I + '; justify-content: space-between' + I + '; height: auto' + I + '; min-height: 29px' + I + '; box-sizing: border-box' + I + '; margin: 8px 0 0' + I + '; padding: 0 4px 0 10px' + I + '; ' + field + ' font-size: 0' + I + '; text-decoration: none' + I + '; cursor: text' + I + '; }' +
+      card + ' .user-reply::before { content: "Reply…"; ' + font + ' font-size: 11px; color: ' + muted + '; }' +
+      card + ' .user-reply::after { content: ""; width: 16px; height: 16px; border-radius: 50%; opacity: 0.5; background: ' + t.accent + ' ' + sendIcon(t['on-accent']) + ' center / 10px 10px no-repeat; }' +
+      card + ' .reply-ct, ' + box + ' .new-comment-ct .inner-ct { display: flex' + I + '; align-items: flex-end' + I + '; margin: 8px 0 0' + I + '; padding: 0 4px 0 0' + I + '; ' + field + ' }' +
+      card + ' .reply-ct:focus-within, ' + card + ' .inner-edit-ct:focus-within { border-color: ' + t.accent + I + '; }' +
+      card + ' .reply-ct textarea { flex: 1' + I + '; min-width: 0' + I + '; width: auto' + I + '; height: 27px' + I + '; min-height: 27px' + I + '; ' + fieldText + ' }' +
+      card + ' textarea::placeholder, ' + box + ' textarea::placeholder { color: ' + muted + I + '; }' +
+      card + ' .reply-ct .btn-reply { flex: none' + I + '; width: 16px' + I + '; height: 16px' + I + '; min-width: 0' + I + '; padding: 0' + I + '; margin: 0 0 5px 4px' + I + '; border: 0' + I + '; border-radius: 50%' + I + '; font-size: 0' + I + '; box-shadow: none' + I + '; background: ' + t.accent + ' ' + sendIcon(t['on-accent']) + ' center / 10px 10px no-repeat' + I + '; }' +
+      card + ' .reply-ct .btn-reply.disabled, ' + card + ' .reply-ct .btn-reply:disabled { opacity: 0.5' + I + '; }' +
+      card + ' .reply-ct .btn-close { display: none' + I + '; }';
+
+    // ── Editing a comment or reply: the field, its own footer, and "Editing ✎" on the row ──
+    css += card + ' .inner-edit-ct { display: flex' + I + '; flex-wrap: wrap' + I + '; justify-content: flex-end' + I + '; gap: 6px' + I + '; margin: 4px 0 0 28px' + I + '; padding: 0 6px 6px 0' + I + '; ' + field + ' }' +
+      card + ' .inner-edit-ct textarea { flex: 1 1 100%' + I + '; width: 100%' + I + '; min-height: 3.2em' + I + '; ' + fieldText + ' }' +
+      card + ' .inner-edit-ct .btn-inner-edit { order: 2' + I + '; ' + primary + ' }' +
+      card + ' .inner-edit-ct .btn-inner-close { order: 1' + I + '; ' + ghost + ' }' +
+      card + ' .inner-edit-ct .btn-inner-close:hover { color: ' + t.fg + I + '; background-color: ' + t.inset + I + '; }' +
+      relabel(card + ' .inner-edit-ct .btn-inner-edit', 'Save') + relabel(card + ' .inner-edit-ct .btn-inner-close', 'Cancel') +
+      card + '.yc-editing > .edit-ct, .reply-item-ct.yc-editing > .btns-reply-ct { display: none' + I + '; }' +
+      card + '.yc-editing > .user-info::after, .reply-item-ct.yc-editing > .user-info::after { content: "Editing"; margin-left: auto; padding-right: 14px; ' + font + ' font-size: 11px; line-height: 16px; color: ' + muted + '; background: ' + coloredIcon(EDIT_PATHS, muted) + ' right center / 10px 10px no-repeat; }' +
+      card + '.yc-editing > .user-info, .reply-item-ct.yc-editing > .user-info { padding-right: 0' + I + '; }';
+
+    // ── The new-comment box at the panel's foot: the same field and buttons ──
+    css += box + ' .new-comment-ct { background: transparent' + I + '; padding: 0 8px 8px' + I + '; }' +
+      box + ' .new-comment-ct textarea { flex: 1' + I + '; ' + fieldText + ' }' +
+      box + ' .new-comment-ct .btn.add { ' + primary + ' margin: 6px 0 0 6px' + I + '; }' +
+      box + ' .new-comment-ct .btn.cancel { ' + ghost + ' margin: 6px 0 0' + I + '; }';
+    return css;
   }
 
   // ── Print (v0.1.18, finish plan Task 3) ──
@@ -1076,6 +1189,8 @@
     var doc;
     try { doc = win.document; } catch (e) { return; } // not same-origin: not ours
     if (!doc || !doc.head) return;
+    // A workbook's comment names its cell where a document's quotes text (commentsCss, v0.1.34).
+    try { if (doc.body && /spreadsheeteditor/.test(String(win.location)) && !doc.body.classList.contains('yc-sheet')) doc.body.classList.add('yc-sheet'); } catch (e) { /* not ours */ }
     // The theme's own web font (Meadow Mist's Nunito), loaded in this frame too. WHY only the
     // editor's own origin's /yc-fonts/css route (v0.1.4): the CSP keeps the editor offline, so a
     // Google link would be blocked; YouCoded's main process fetches Google's font hosts for it and

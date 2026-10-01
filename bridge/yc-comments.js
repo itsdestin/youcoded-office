@@ -50,7 +50,34 @@
     changedTimer = setTimeout(function () { changedTimer = 0; window.parent.postMessage({ type: 'yc:office-comments-changed' }, '*'); }, 300);
   }
   var EVENTS = ['asc_onAddComment', 'asc_onAddComments', 'asc_onChangeCommentData', 'asc_onRemoveComment'];
+  // ── The reply and edit boxes answer keys as the app's do (v0.1.34) ──
+  // WHY: the panel is styled as YouCoded's comment boxes (yc-bridge.js commentsCss), which send on
+  // Enter (Shift+Enter: a new line) and close on Escape — and the editor's own Close button is
+  // gone from the reply box, so Escape is how it closes. Only inside a reply or edit box.
+  function keys(w) {
+    var d;
+    try { d = w && w.document; } catch (e) { return; }
+    if (!d || d.__ycCommentKeys) return;
+    d.__ycCommentKeys = true;
+    d.addEventListener('keydown', function (e) {
+      var ta = e.target;
+      if (!ta || ta.tagName !== 'TEXTAREA' || typeof ta.closest !== 'function') return;
+      var box = ta.closest('.reply-ct, .inner-edit-ct');
+      if (!box) return;
+      var hit = null;
+      if (e.key === 'Escape') hit = box.querySelector('.btn-close, .btn-inner-close');
+      else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
+        hit = box.querySelector('.btn-reply, .btn-inner-edit');
+        if (hit && (hit.disabled || /\bdisabled\b/.test(hit.className))) { e.preventDefault(); return; }
+      }
+      if (!hit) return;
+      e.preventDefault();
+      e.stopPropagation();
+      hit.click();
+    }, true);
+  }
   function listen() {
+    keys(editorWindow());
     var api = apiOf(editorWindow());
     if (!api || api.__ycComments || typeof api.asc_registerCallback !== 'function') return;
     api.__ycComments = true;
