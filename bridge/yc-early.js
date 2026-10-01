@@ -239,6 +239,41 @@
   }
   clearThumbsBack(window.HTMLCanvasElement);
 
+  // ── A see-through desk is cleared, not painted over (v0.1.33) ──
+  // WHY (Destin, 2026-10-01: "doc viewer got super janky after scrolling around" — old page edges
+  // at several widths, a squashed copy of the text, ruler numbers drawn over each other): on a
+  // wallpaper theme the desk is see-through (yc-bridge.js frameCss sets --canvas-background to
+  // transparent), and sdkjs "clears" the document area (#id_viewer, Word and slides) and both
+  // rulers by filling them with that colour before it draws. A fill with a fully transparent colour
+  // paints nothing, so every zoom and scroll step was drawn over the last one. Measured in the
+  // perf rig: the same on v0.1.30 — a theme that STARTS on a wallpaper gets the transparent colour;
+  // one switched to a wallpaper later kept the previous opaque one, which is why it looked fine
+  // there. On these canvases only, such a fill clears the area it names instead: what it would
+  // have painted (nothing) and what the editor meant (the background) are then the same.
+  var DESK = { id_viewer: 1, id_hor_ruler: 1, id_vert_ruler: 1 };
+  function isSeeThrough(style) {
+    return typeof style === 'string' && (style === 'transparent' || /^rgba\([^)]*,\s*0\)$/.test(style));
+  }
+  function clearSeeThroughDesk(HC) {
+    var P = HC && HC.prototype;
+    if (!P || P.__ycDesk || typeof P.getContext !== 'function') return;
+    var get = P.getContext;
+    P.getContext = function (kind) {
+      var ctx = get.apply(this, arguments);
+      if (ctx && kind === '2d' && DESK[this.id] === 1 && !ctx.__ycDesk) {
+        var fill = ctx.fillRect;
+        ctx.fillRect = function (x, y, w, h) {
+          if (isSeeThrough(this.fillStyle)) return this.clearRect(x, y, w, h);
+          return fill.apply(this, arguments);
+        };
+        ctx.__ycDesk = true;
+      }
+      return ctx;
+    };
+    P.__ycDesk = true;
+  }
+  clearSeeThroughDesk(window.HTMLCanvasElement);
+
   onDefine(window, 'AscCommon', function (ns) {
     onDefine(ns, 'baseEditorsApi', quietApi);
     onDefineWrap(ns, 'ScrollSettings', slimSettings);

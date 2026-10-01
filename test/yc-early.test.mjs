@@ -216,3 +216,35 @@ test('on a glass theme the slide list\'s full background fill clears the canvas;
   other.getContext('2d').fillRect(0, 0, 200, 600);
   assert.deepEqual(ops.pop(), ['fill', 0, 0, 200, 600], 'no other canvas changes');
 });
+
+// v0.1.33 (Destin, 2026-10-01: "doc viewer got super janky after scrolling around" — old page
+// edges at several widths, a squashed copy of the text, the ruler numbers drawn over each other).
+// On a wallpaper theme the desk's colour is see-through (frameCss: --canvas-background
+// transparent), and sdkjs "clears" the document area and both rulers by filling them with that
+// colour, which leaves what was there — every zoom or scroll step drew over the last one. A fill
+// with a fully transparent colour paints nothing, so on these canvases it clears instead.
+test('a see-through background fill on the document area or a ruler clears it; nothing else changes', async () => {
+  const src = await readFile(path.resolve(import.meta.dirname, '..', 'bridge', 'yc-early.js'), 'utf8');
+  const ops = [];
+  const ctxProto = { fillStyle: '#000000', fillRect(...a) { ops.push(['fill', this.fillStyle, ...a]); }, clearRect(...a) { ops.push(['clear', ...a]); } };
+  function HTMLCanvasElement() {}
+  HTMLCanvasElement.prototype.getContext = function () { if (!this._c) { this._c = Object.create(ctxProto); this._c.canvas = this; } return this._c; };
+  const window = { HTMLCanvasElement };
+  vm.runInContext(src, vm.createContext({ window, Object }));
+  const make = (id) => { const c = new HTMLCanvasElement(); c.id = id; c.width = 300; c.height = 200; return c.getContext('2d'); };
+  for (const id of ['id_viewer', 'id_hor_ruler', 'id_vert_ruler']) {
+    const ctx = make(id);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0)';
+    ctx.fillRect(0, 0, 300, 200);
+    assert.deepEqual(ops.pop(), ['clear', 0, 0, 300, 200], `${id}: a see-through background clears`);
+    ctx.fillRect(5, 6, 7, 8);
+    assert.deepEqual(ops.pop(), ['clear', 5, 6, 7, 8], `${id}: a part of it too`);
+    ctx.fillStyle = '#16171b';
+    ctx.fillRect(0, 0, 300, 200);
+    assert.deepEqual(ops.pop(), ['fill', '#16171b', 0, 0, 300, 200], `${id}: a solid desk still fills`);
+  }
+  const page = make('id_main');
+  page.fillStyle = 'rgba(0, 0, 0, 0)';
+  page.fillRect(0, 0, 300, 200);
+  assert.deepEqual(ops.pop(), ['fill', 'rgba(0, 0, 0, 0)', 0, 0, 300, 200], 'no other canvas changes');
+});
