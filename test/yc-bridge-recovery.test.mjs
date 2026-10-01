@@ -82,3 +82,24 @@ test('the editor sends its edits every second, even while the person keeps typin
   assert.equal(api.intervalWaitAutoSave, 0);
   assert.equal(api.autoSaveGapFast, 1000);
 });
+
+// v0.1.25 (Task 8 fix round 1): just before its window closes, the host asks for the newest edits.
+test('asked before a close, the editor sends its edits at once, then answers', async () => {
+  const src = await readFile(BRIDGE, 'utf8');
+  const order = [];
+  const listeners = [];
+  const api = { lastSaveTime: new Date(), _autoSave() { order.push(['autosave', this.lastSaveTime.getTime()]); } };
+  const editorDoc = { head: { appendChild() {} }, getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], createElement: () => ({ setAttribute() {} }), addEventListener() {} };
+  const editorWin = { location: 'office://t/web-apps/apps/documenteditor/main/index.html', document: editorDoc, Asc: { editor: api }, localStorage: { getItem: () => null, setItem() {} } };
+  editorDoc.defaultView = editorWin;
+  const parent = { postMessage: (m) => order.push(['answer', m.type]) };
+  const win = {
+    parent, location: { origin: 'office://t' }, addEventListener: (t, cb) => { if (t === 'message') listeners.push(cb); },
+    document: { documentElement: {}, querySelectorAll: (q) => (q === 'iframe' ? [{ contentWindow: editorWin, addEventListener() {} }] : []) },
+  };
+  const ctx = vm.createContext({ window: win, document: win.document, location: win.location, localStorage: { getItem: () => null, setItem() {} },
+    setInterval: () => 0, setTimeout: () => 0, clearTimeout() {}, requestAnimationFrame: () => 0, getComputedStyle: () => ({}), WeakSet, JSON, Object, Promise, Date, MutationObserver: class { observe() {} } });
+  vm.runInContext(src, ctx);
+  listeners.forEach((cb) => cb({ source: parent, data: { type: 'yc:office-journal' } }));
+  assert.deepEqual(order, [['autosave', 0], ['answer', 'yc:office-journaled']]);
+});

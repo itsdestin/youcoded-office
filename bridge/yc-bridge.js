@@ -1031,6 +1031,21 @@
     if (api && typeof api.asc_Save === 'function' && !unchanged) { api.asc_Save(false); return; }
     if (window.AscDesktopEditor) window.AscDesktopEditor.LocalFileSave('', '', null, 0, null);
   }
+  // ── Edits now, the window is closing (v0.1.25, finish plan Task 8 fix round 1) ──
+  // WHY: edits reach the host's recovery journal about once a second (streamEdits); a window closed
+  // inside that second would drop the last of them. The host asks just before the close; sdkjs's own
+  // autosave step is run at once with its timer cleared (it sends the edits — changes only, never a
+  // save of the document), and the answer goes to the host AFTER them, so it knows they arrived.
+  function sendEditsNow() {
+    try {
+      var api = editorApi();
+      if (api && typeof api._autoSave === 'function') {
+        api.lastSaveTime = new Date(0);
+        api._autoSave();
+      }
+    } catch (e) { logLine('[YC] sending edits before close failed: ' + ((e && e.message) || e)); }
+    window.parent.postMessage({ type: 'yc:office-journaled' }, '*');
+  }
   function run(cmd) {
     // v0.1.21: open the editor's comments panel (left strip). Only opens — its button toggles, and
     // the host may ask twice. Used by YouCoded's photographs of the restyled panel.
@@ -1118,6 +1133,7 @@
     // which sends the bytes and calls save_file. The direct call stays only as a fallback for a
     // frame whose editor API is not reachable yet.
     if (d.type === 'yc:office-save') save();
+    if (d.type === 'yc:office-journal') sendEditsNow();
   });
   setInterval(function () { if (slim) reportState(); }, 250);
   // Editor frames appear late and are rebuilt on open; re-walk when the tree changes.
