@@ -135,16 +135,37 @@
     var n = parseInt(m[1], 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
+  // WHY the colours come from the editor's CURRENT skin (v0.1.39, Destin: "scrollbars still
+  // aren't updating consistently" after theme switches): sdkjs copies the colours into each
+  // scrollbar's own settings when it makes it, and some scrollbars (the slide area's horizontal
+  // one, measured in the dev window) are never handed new settings — they kept the old theme's
+  // colour for good. The level sdkjs animates is still read against the settings it was computed
+  // from (which hover step it is); only the colours drawn are today's.
   function thumbColour(settings, level) {
     var base = hexRgb(settings.scrollerColor), hover = hexRgb(settings.scrollerHoverColor), active = hexRgb(settings.scrollerActiveColor);
     if (!base) return settings.scrollerColor || '#888';
     hover = hover || base; active = active || hover;
+    var skin = window.AscCommon && window.AscCommon.GlobalSkin;
+    var now = skin && hexRgb(skin.ScrollerColor);
+    var nowHover = (skin && hexRgb(skin.ScrollerHoverColor)) || now, nowActive = (skin && hexRgb(skin.ScrollerActiveColor)) || nowHover;
     var t = 0;
-    if (active[0] !== hover[0] && Math.round(level) === active[0]) return 'rgb(' + active.join(',') + ')';
+    if (active[0] !== hover[0] && Math.round(level) === active[0]) return 'rgb(' + (nowActive || active).join(',') + ')';
     if (hover[0] !== base[0]) t = Math.max(0, Math.min(1, (level - base[0]) / (hover[0] - base[0])));
     else if (Math.round(level) !== base[0]) t = 1;
-    return 'rgb(' + [0, 1, 2].map(function (i) { return Math.round(base[i] + (hover[i] - base[i]) * t); }).join(',') + ')';
+    var from = now || base, to = nowHover || hover;
+    return 'rgb(' + [0, 1, 2].map(function (i) { return Math.round(from[i] + (to[i] - from[i]) * t); }).join(',') + ')';
   }
+  // Every scrollbar drawn so far, so a theme change can redraw them all — a scrollbar is only
+  // redrawn by sdkjs when it moves or is hovered, so a still one kept the old colour on screen.
+  // The bridge (yc-bridge.js applyTo) calls __ycRedrawScrolls after it hands the new colours over.
+  var drawnScrolls = typeof Set === 'function' ? new Set() : null;
+  window.__ycRedrawScrolls = function () {
+    if (!drawnScrolls) return;
+    drawnScrolls.forEach(function (so) {
+      if (so.canvas && so.canvas.isConnected === false) { drawnScrolls.delete(so); return; }
+      try { so._drawScroll(so.scrollColor, so.targetColor, so.strokeColor); } catch (e) { /* sdkjs changed: it draws on its next move */ }
+    });
+  };
   function slimSettings(Orig) {
     if (typeof Orig !== 'function' || Orig.__ycSlim) return Orig;
     var Slim = function () { Orig.apply(this, arguments); this.showArrows = false; };
@@ -155,6 +176,7 @@
   }
   function drawSlim(fillLevel, targetLevel, strokeLevel) {
     var s = this.settings, ctx = this.context, sc = this.scroller;
+    if (drawnScrolls) drawnScrolls.add(this);
     this.scrollColor = fillLevel; this.targetColor = targetLevel; this.strokeColor = strokeLevel;
     if (!ctx || !s || !sc) return;
     var br = window.AscCommon && window.AscCommon.AscBrowser;

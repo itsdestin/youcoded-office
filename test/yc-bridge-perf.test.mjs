@@ -301,3 +301,24 @@ test('a theme switch repaints every canvas colour once: the sheet before a light
   assert.equal(skin['canvas-cell-title-background'], '#202020', 'sheet headers');
   assert.ok(!('font-family-base' in skin) && !('border-sidemenu' in skin), 'colours only');
 });
+
+// v0.1.39 (Destin: "scrollbars still aren't updating consistently"): a still scrollbar is only
+// redrawn by the editor when it moves, so a theme change redraws them all (yc-early.js).
+test('a theme change redraws every canvas scrollbar, now and once more in the next frame; an unchanged theme does not', async () => {
+  const page = await load();
+  let redraws = 0;
+  const frames = [];
+  page.editorWin.__ycRedrawScrolls = () => { redraws++; };
+  page.editorWin.requestAnimationFrame = (fn) => frames.push(fn);
+  page.post({ type: 'yc:office-theme', theme: theme() });
+  page.flush();
+  assert.equal(redraws, 1);
+  frames.splice(0).forEach((f) => f());
+  assert.equal(redraws, 2);
+  page.post({ type: 'yc:office-theme', theme: theme() });
+  page.flush();
+  assert.equal(redraws, 2, 'the same theme again redraws nothing');
+  page.post({ type: 'yc:office-theme', theme: theme({ 'scrollbar-thumb': '#aa3355' }) });
+  page.flush();
+  assert.equal(redraws, 3);
+});

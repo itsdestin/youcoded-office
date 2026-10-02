@@ -248,3 +248,40 @@ test('a see-through background fill on the document area or a ruler clears it; n
   page.fillRect(0, 0, 300, 200);
   assert.deepEqual(ops.pop(), ['fill', 'rgba(0, 0, 0, 0)', 0, 0, 300, 200], 'no other canvas changes');
 });
+
+// v0.1.39 (Destin: "scrollbars still aren't updating consistently" after theme switches). Each
+// scrollbar keeps the colours sdkjs copied into its own settings when it was made; some (the
+// slide area's horizontal one, measured in the dev window) are never given new settings, so they
+// kept the old theme's colour. The thumb now takes the editor's CURRENT colours, and every
+// scrollbar is redrawn once when the theme changes, moving or not.
+test('a canvas scrollbar wears the current theme colours, and all of them redraw on a theme change', async () => {
+  const a = await editorPage();
+  a.AscCommon = a.AscCommon || {};
+  function ScrollObject() {}
+  ScrollObject.prototype._drawScroll = function () { throw new Error('sdkjs drawing'); };
+  a.AscCommon.ScrollObject = ScrollObject;
+  a.AscCommon.GlobalSkin = { ScrollerColor: '#2f7d55', ScrollerHoverColor: '#24613f', ScrollerActiveColor: '#24613f' };
+  const make = () => {
+    const so = new ScrollObject();
+    so.context = fakeCanvas();
+    so.canvas = { isConnected: true };
+    so.settings = { isVerticalScroll: true, scrollerColor: '#2f7d55', scrollerHoverColor: '#24613f', scrollerActiveColor: '#24613f' };
+    so.scroller = { x: 1, y: 40, w: 12, h: 80 };
+    so.canvasW = 14; so.canvasH = 600; so.maxScrollY = 500;
+    return so;
+  };
+  const still = make(), hovered = make();
+  still._drawScroll(0x2f, 0x2f, 0x2f);
+  hovered._drawScroll(0x24, 0x24, 0x24);
+  still.context.ops.length = 0; hovered.context.ops.length = 0;
+  // The theme changes; neither scrollbar's own settings do.
+  a.AscCommon.GlobalSkin = { ScrollerColor: '#c0c0c0', ScrollerHoverColor: '#999999', ScrollerActiveColor: '#999999' };
+  a.__ycRedrawScrolls();
+  assert.deepEqual(still.context.ops.filter((o) => o[0] === 'fillStyle').map((o) => o[1]), ['rgb(192,192,192)'], 'resting: the new colour');
+  assert.deepEqual(hovered.context.ops.filter((o) => o[0] === 'fillStyle').map((o) => o[1]), ['rgb(153,153,153)'], 'hovered: the new hover colour');
+  // One that left the page is forgotten, not drawn.
+  still.canvas.isConnected = false;
+  still.context.ops.length = 0;
+  a.__ycRedrawScrolls();
+  assert.equal(still.context.ops.length, 0);
+});

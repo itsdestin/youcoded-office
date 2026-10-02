@@ -1260,6 +1260,14 @@
     // repaints the rulers, scrollbars, sheet headers and slide list.
     pushSkin(win);
     if (!fresh) return;
+    // v0.1.39: every canvas scrollbar redrawn in the new colours (yc-early.js says why) — now, and
+    // once more in the next frame, after the editor has rebuilt whatever its own repaint rebuilds.
+    try {
+      if (typeof win.__ycRedrawScrolls === 'function') {
+        win.__ycRedrawScrolls();
+        if (win.requestAnimationFrame) win.requestAnimationFrame(function () { try { win.__ycRedrawScrolls(); } catch (e) { /* frame gone */ } });
+      }
+    } catch (e) { /* not an editor frame */ }
     // OnlyOffice positions its bands in script; a resize makes it lay out again without the rows
     // we just hid. WHY only when what is hidden or the font changed (v0.1.31): the resize makes
     // the editor re-lay out and redraw its whole canvas — measured 2026-10-01, most of a theme
