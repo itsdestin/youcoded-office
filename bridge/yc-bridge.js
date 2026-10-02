@@ -195,6 +195,13 @@
       .catch(function (e) { logLine('[YC] recovering unsaved changes failed: ' + ((e && e.message) || e)); return null; })
       .then(function (rec) {
         return rec || invoke('open_file', { path: filePath }).then(function (b64) { return { data: b64, path: filePath, name: name }; });
+      })
+      // WHY tell the host (v0.1.41, clean Windows 11 VM 2026-10-02): bridge.js answers a failed
+      // open with its own error box, but YouCoded keeps the editor hidden until the document is
+      // drawn, so the person saw "Opening…" forever. The host shows its own error with Retry.
+      .catch(function (e) {
+        try { window.parent.postMessage({ type: 'yc:office-failed' }, '*'); } catch (_) { /* no host */ }
+        throw e;
       });
   };
   // ── Edits reach the journal every second (v0.1.24, finish plan Task 8) ──

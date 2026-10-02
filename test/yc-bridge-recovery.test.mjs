@@ -76,6 +76,15 @@ test('a journal that cannot be loaded falls back to the file, and says so in the
   assert.ok(logged.some((l) => /recovering unsaved changes failed: gone/.test(l)));
 });
 
+test('a file that cannot be opened is reported to the host, not left on "Opening…"', async () => {
+  const { win } = await load();
+  const posted = [];
+  win.parent.postMessage = (m) => posted.push(m);
+  const h = host({ recovery_candidates: [], open_file: () => { throw new Error('x2t failed'); } });
+  await assert.rejects(win.__ycOpenFile(h.invoke, 'plan.docx'), /x2t failed/);
+  assert.deepEqual(JSON.parse(JSON.stringify(posted)), [{ type: 'yc:office-failed' }]);
+});
+
 test('the editor sends its edits every second, even while the person keeps typing', async () => {
   const { api, tick } = await load();
   tick();
