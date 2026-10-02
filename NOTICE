@@ -44,6 +44,14 @@ project; the Windows converter is a newer ONLYOFFICE build than the others,
 so it can read and write a few more formats. The macOS files are re-signed by
 YouCoded's own app build; their content is unchanged.
 
+Microsoft Visual C++ runtime (win32-x64 converter/ only)
+--------------------------------------------------------
+vcruntime140.dll, vcruntime140_1.dll and msvcp140.dll, unmodified, placed
+beside x2t.exe because the converter needs them and a fresh Windows PC does
+not have them. Copyright Microsoft Corporation. Redistributed as Microsoft's
+Visual C++ "Distributable Code" permits (app-local deployment); they are
+not covered by this repo's AGPL licence.
+
 Fonts (editors/fonts)
 ----------------------
 - Carlito (Regular, Bold, Italic, Bold Italic)

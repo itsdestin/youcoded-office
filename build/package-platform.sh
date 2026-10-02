@@ -64,6 +64,16 @@ case "$PLATFORM" in
     # converters (the same lines euro-office-lite's own app writes at run time), Word, Excel and
     # PowerPoint documents all print. The unused 32 MB bundle is left out.
     rm "$OUT/converter/sdk-word-bundle.js"
+    # WHY (2026-10-02, clean Windows 11 VM): x2t and its DLLs need Microsoft's Visual C++
+    # runtime, which euro-office-lite's installer does not ship and a fresh PC does not have —
+    # x2t exited 0xC0000135 ("DLL not found") and documents never opened. Microsoft allows these
+    # three DLLs to sit beside the program that uses them; Windows looks there first. CI copies
+    # them from a Windows machine's System32 (the `vcruntime` job) into work/vcruntime/.
+    for dll in vcruntime140.dll vcruntime140_1.dll msvcp140.dll; do
+      [ -f "$WORK/vcruntime/$dll" ] || { echo "missing $WORK/vcruntime/$dll (the Visual C++ runtime — see the vcruntime job)" >&2; exit 1; }
+      cp "$WORK/vcruntime/$dll" "$OUT/converter/$dll"
+    done
+    bash "$ROOT/build/check-win-imports.sh" "$OUT/converter"
     cat > "$OUT/converter/DoctRenderer.config" <<'CONFIG'
 <Settings>
 <file>../editors/sdkjs/common/Native/native.js</file>

@@ -29,8 +29,24 @@ jobs:
   # The Mac and Windows converters come from euro-office-lite's own installers for the pinned
   # tag. WHY ubuntu-24.04 here: its 7-Zip (7zz, 23.x) opens the APFS disk images the Mac
   # installers are; ubuntu-22.04 only carries the older p7zip, which cannot.
+  # WHY: the Windows converter needs Microsoft's Visual C++ runtime DLLs, which a fresh PC does
+  # not have (see package-platform.sh). Microsoft's installer can't be unpacked on Linux, so take
+  # the x64 DLLs a Windows machine already has installed.
+  vcruntime:
+    runs-on: windows-latest
+    steps:
+      - shell: pwsh
+        run: |
+          New-Item -ItemType Directory vcruntime | Out-Null
+          foreach ($d in 'vcruntime140.dll','vcruntime140_1.dll','msvcp140.dll') {
+            Copy-Item "$env:SystemRoot\System32\$d" "vcruntime\$($d.ToLower())"
+            "$d " + (Get-Item "vcruntime\$d").VersionInfo.FileVersion
+          }
+      - uses: actions/upload-artifact@v4
+        with: { name: vcruntime, path: vcruntime, retention-days: 1 }
+
   package:
-    needs: linux
+    needs: [linux, vcruntime]
     runs-on: ubuntu-24.04
     strategy:
       matrix: { platform: [darwin-x64, darwin-arm64, win32-x64] }
@@ -39,6 +55,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with: { name: base }
       - run: mkdir -p work && tar -C work -xzf base.tar.gz
+      - uses: actions/download-artifact@v4
+        with: { name: vcruntime, path: work/vcruntime }
       - run: sudo apt-get update && sudo apt-get install -y 7zip
       - run: bash build/package-platform.sh ${{ matrix.platform }}
       - uses: actions/upload-artifact@v4
