@@ -382,7 +382,7 @@
     doc.__ycDomWatch = true;
     tagPass(doc);
     watchStatusbar(win, doc);
-    var onScript = function () { keepTypingDuringSave(win); streamEdits(win); quietEditor(win); };
+    var onScript = function () { keepTypingDuringSave(win); streamEdits(win); quietEditor(win); saveAlwaysPressable(win); };
     // WHY matched in the next animation frame, and only the entries whose parts were added
     // (measured in the perf rig): dragging the window narrower makes the editor move whole toolbar
     // groups into its "More" box many times a second, and matching every entry on each move cost
@@ -1358,11 +1358,53 @@
     } catch (e) { /* not this editor's API: saves keep the editor's own behaviour */ }
   }
 
+  // ── Save stays pressable (v0.1.42) ──
+  // WHY (Destin, 2026-11-14: "the regular save button is greyed out, so how would i just save a
+  // doc?"): the host saves on its own about 3 s after the last change, and the editor greys Save
+  // out whenever nothing is waiting — so the one button everyone knows looked broken. web-apps keeps
+  // Save enabled when `forcesave` is on, but sets that only for online editors (canForcesave needs
+  // !isOffline), so it is turned on here, in the editor's own options. Pressing Save (or Ctrl+S, or
+  // File → Save) with changes saves at once, as before. With nothing waiting, sdkjs's asc_Save
+  // would do nothing at all; instead the host is told (yc:office-save-pressed), which saves anything
+  // it still holds (a Save As clears the editor's "modified" flag while the file itself may still
+  // lack edits) or says all changes are saved. The host's own autosave never reaches that branch:
+  // save() below calls asc_Save only while the document is modified.
+  function saveAlwaysPressable(win) {
+    try {
+      var app = win.DE || win.SSE || win.PE;
+      var main = app && app.getController && app.getController('Main');
+      var opts = main && main.appOptions;
+      var api = (win.Asc && win.Asc.editor) || win.editor;
+      if (!opts || !opts.isEdit || !api || typeof api.asc_Save !== 'function') return;
+      if (!opts.forcesave) {
+        opts.forcesave = true;
+        // Re-checked now; the editor checks again on every change of its "modified" flag.
+        if (typeof main.disableSaveButton === 'function') main.disableSaveButton(false);
+      }
+      if (api.asc_Save.__ycPressed) return;
+      var save = api.asc_Save;
+      api.asc_Save = function () {
+        var modified = true;
+        try { if (typeof this.isDocumentModified === 'function') modified = this.isDocumentModified(); } catch (e) { /* treat as modified */ }
+        // Only the person's plain Save: web-apps calls asc_Save() with no arguments (button,
+        // Ctrl+S, File → Save). Anything with arguments — editor-patches.js's Save As/PDF,
+        // asc_Save(false, true, …) — passes straight through, modified or not.
+        if (!modified && arguments.length === 0) {
+          try { window.parent.postMessage({ type: 'yc:office-save-pressed' }, '*'); } catch (e) { /* no host */ }
+          return;
+        }
+        return save.apply(this, arguments);
+      };
+      api.asc_Save.__ycPressed = true;
+    } catch (e) { /* not an editor frame yet — the next pass tries */ }
+  }
+
   function walk(win) {
     blockPeers(win);
     guardUnload(win);
     quietEditor(win);
     keepTypingDuringSave(win);
+    saveAlwaysPressable(win);
     if (latest) applyTo(win);
     var frames;
     try { frames = win.document.querySelectorAll('iframe'); } catch (e) { return; }
