@@ -1382,8 +1382,14 @@
         if (typeof main.disableSaveButton === 'function') main.disableSaveButton(false);
       }
       if (api.asc_Save.__ycPressed) return;
-      var save = api.asc_Save;
+      // WHY the editor's save is looked up at each call, never kept from now (the first version
+      // of this kept it and broke every save — Destin's dev window, 2026-11-14): sdkjs defines
+      // asc_Save on its API's prototype TWICE, once by its quick first build and again when the
+      // full build arrives (see keepTypingDuringSave). A kept copy is the first build's, which
+      // never saves in the desktop form, so every autosave and Try again silently did nothing.
+      var proto = Object.getPrototypeOf(api);
       api.asc_Save = function () {
+        var save = proto && proto.asc_Save;
         var modified = true;
         try { if (typeof this.isDocumentModified === 'function') modified = this.isDocumentModified(); } catch (e) { /* treat as modified */ }
         // Only the person's plain Save: web-apps calls asc_Save() with no arguments (button,
@@ -1393,7 +1399,7 @@
           try { window.parent.postMessage({ type: 'yc:office-save-pressed' }, '*'); } catch (e) { /* no host */ }
           return;
         }
-        return save.apply(this, arguments);
+        return typeof save === 'function' ? save.apply(this, arguments) : undefined;
       };
       api.asc_Save.__ycPressed = true;
     } catch (e) { /* not an editor frame yet — the next pass tries */ }

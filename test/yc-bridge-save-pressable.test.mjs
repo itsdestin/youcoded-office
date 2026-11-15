@@ -18,11 +18,14 @@ async function load({ modified = false } = {}) {
   const store = new Map();
   const ls = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) };
   const saved = [];
-  const api = {
-    modified,
+  // Like sdkjs: asc_Save lives on the API's prototype, and the full build defines it again later.
+  const proto = {
     isDocumentModified() { return this.modified; },
-    asc_Save(...args) { saved.push(args); },
+    asc_Save(...args) { saved.push(['first build', ...args]); },
   };
+  const api = Object.create(proto);
+  api.modified = modified;
+  const fullBuildArrives = () => { proto.asc_Save = function (...args) { saved.push(args); }; };
   const main = { appOptions: { isEdit: true, forcesave: false }, buttonChecks: [], disableSaveButton(v) { this.buttonChecks.push([v, this.appOptions.forcesave]); } };
   const editorDoc = { head: { appendChild() {} }, getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], createElement: () => ({ setAttribute() {} }), addEventListener() {} };
   const editorWin = {
@@ -52,7 +55,8 @@ async function load({ modified = false } = {}) {
   // The bridge walks the frames on its first theme; that is when it meets the editor.
   post({ type: 'yc:office-theme', theme: { tokens: { canvas: '#000000' } } });
   tick();
-  return { api, main, saved, toHost, post, tick };
+  fullBuildArrives();
+  return { api, main, saved, toHost, post, tick, proto };
 }
 
 test('Save stays enabled: the editor is told to keep it pressable, and re-checks it at once', async () => {
@@ -88,4 +92,12 @@ test("the host's own autosave never asks for a save of an unmodified document", 
   post({ type: 'yc:office-save' });
   assert.ok(!toHost.some((m) => m && m.type === 'yc:office-save-pressed'));
   assert.deepEqual(saved, []);
+});
+
+test("the editor's save is the one current at each call — its full build's, not one kept from before", async () => {
+  // load() lets the bridge meet the editor first, then the full build redefines asc_Save.
+  const { api, saved, post } = await load({ modified: true });
+  post({ type: 'yc:office-save' }); // the host's autosave
+  api.asc_Save();                   // the person's Save
+  assert.deepEqual(saved, [[false], []]);
 });
