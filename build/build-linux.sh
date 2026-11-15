@@ -29,7 +29,32 @@ npm rebuild gifsicle optipng-bin
 # Python 3 does not carry.
 python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --disable-pip-version-check --user Pillow \
   || python3 -m pip install --quiet --disable-pip-version-check --user --break-system-packages Pillow
+# WHY Carlito is fetched here first, pinned (v0.1.44): prepare-fonts.sh downloads it from
+# googlefonts/carlito's main branch with `curl -L` (no -f), and on 2026-11-04 upstream deleted
+# fonts/ttf/ (the repo now holds sources only). v0.1.43 was built after that: its four
+# "Carlito" files were GitHub's 404 page, and the spreadsheet editor (Calibri → Carlito) never
+# opened. prepare-fonts.sh keeps any file already in its cache folder, so the real fonts go
+# there first: from the last commit that had them, each checked against its known hash (the
+# same bytes v0.1.41 shipped).
+CARLITO_REV=408ac4e302760cdd9f5a088d2138762e02330f07
+CARLITO_CACHE="${TMPDIR:-/tmp}/euro-office-fonts/carlito"
+mkdir -p "$CARLITO_CACHE"
+while read -r sum name; do
+  curl -fsSL -o "$CARLITO_CACHE/$name" "https://raw.githubusercontent.com/googlefonts/carlito/$CARLITO_REV/fonts/ttf/$name"
+  echo "$sum  $CARLITO_CACHE/$name" | sha256sum -c --quiet -
+done <<'SUMS'
+f6418f708baede9789daef5d458c0f53d2a888af9820e8062934e504fedc6595 Carlito-Regular.ttf
+0b019225e58d702bfedcbd35c21696769f8ee115cb6343f84c2f240312450d1c Carlito-Italic.ttf
+bb5d20f79b82599ec72983597437373a80f2d2085fa91fc144fd74e876a594db Carlito-Bold.ttf
+b32928186c119599e03ca6a1ffc680fdcb7fac95772f4b95d989cf6cd3861517 Carlito-BoldItalic.ttf
+SUMS
 bash scripts/prepare-fonts.sh
+# Every font the editors ship must really be a font: a TrueType/OpenType file starts with
+# 00 01 00 00, "true" or "OTTO". A web page saved under a .ttf name (above) fails the build here.
+for f in src/fonts/*.ttf; do
+  magic=$(head -c 4 "$f" | od -An -tx1 | tr -d ' \n')
+  case "$magic" in 00010000|74727565|4f54544f) ;; *) echo "not a font file: $f ($magic)" >&2; exit 1 ;; esac
+done
 node scripts/build-frontend-prod.mjs
 cp -r src-dist "$OUT/editors"
 

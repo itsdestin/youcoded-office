@@ -259,3 +259,16 @@ test('every element id the add-on styles, hides or presses is still in the edito
   for (const n of ['id-toolbar-btn-', 'btn-quick-print', 'setPrintersInfo', '<tr class="themes">', 'separator-theme']) if (!ui.includes(n)) missing.push(n);
   assert.deepEqual(missing, []);
 });
+
+// v0.1.44: v0.1.43 shipped four "Carlito" fonts that were GitHub's 404 page (upstream deleted the
+// files the build downloaded), and the spreadsheet editor never opened. Every shipped font must
+// start like a TrueType/OpenType file, and Carlito (the editors' Calibri) must be there.
+test('every font the editors ship is a real font file, Carlito included', async () => {
+  const dir = path.join(B, 'editors', 'fonts');
+  const names = (await readdir(dir)).filter((n) => /\.(ttf|otf)$/i.test(n));
+  assert.ok(names.includes('Carlito-Regular.ttf'), 'Carlito-Regular.ttf is shipped');
+  for (const n of names) {
+    const head = (await readFile(path.join(dir, n))).subarray(0, 4).toString('hex');
+    assert.ok(['00010000', '74727565', '4f54544f'].includes(head), `${n} is not a font file (starts ${head})`);
+  }
+});
